@@ -1,3 +1,9 @@
+paths:
+  data: 'data/babylm_10M'
+  big_data: 'data/babylm_100M'
+  dev_data: 'data/babylm_dev'
+  test_data: 'data/babylm_test'
+
 data_params:
   sample_with_replacement: False  # this must be False if corpus order is to be preserved during training
   training_order: 'original'  # original or shuffled, use this alongside consecutive_masking=True
@@ -15,6 +21,7 @@ data_params:
   tokenizer: 'phueb/BabyBERTa-1'  # larger than 8k slightly reduces performance
   add_prefix_space: True  # better if True, whether to treat first token like any other token (False in GPT-2)
   max_input_length: 128  # unacceptable performance if lower than ~32
+  corpora: ['aochildes']
 
 training_params:
   batch_size: 16
@@ -31,4 +38,4 @@ model_params:
   num_attention_heads: 8
   intermediate_size: 1024
   initializer_range: 0.02  # stdev of trunc normal for initializing all weights
-  layer_norm_eps: 1e-5  # 1e-5 default in fairseq (and slightly better performance), 1e-12 default in hgugingface,
+  layer_norm_eps: 1e-5  # 1e-5 default in fairseq (and slightly better performance), 1e-12 default in hgugingface, 

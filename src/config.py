@@ -2,9 +2,16 @@
 Followed from the BabyBERTa repo."""
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List
 
 
+@dataclass
+class Paths:
+    # paths
+    data: str
+    big_data: str
+    dev_data: str
+    test_data: str
 
 @dataclass
 class DataParams:
@@ -25,6 +32,7 @@ class DataParams:
     tokenizer: str
     add_prefix_space: bool
     max_input_length: int
+    corpora: List[str]
 
 @dataclass
 class TrainingParams:
@@ -34,6 +42,7 @@ class TrainingParams:
     num_epochs: int
     num_warmup_steps: int
     weight_decay: float
+    seed: int
 
 @dataclass
 class ModelParams:
@@ -49,6 +58,7 @@ class ModelParams:
 
 @dataclass
 class BabyBERTaConfig:
+    paths: Paths
     data_params: DataParams
     training_params: TrainingParams
     model_params: ModelParams
