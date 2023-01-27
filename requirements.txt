@@ -2,3 +2,6 @@ isort
 autoflake
 black
 pre-commit
+hydra
+hydra.core
+omegaconf
