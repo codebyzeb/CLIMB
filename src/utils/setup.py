@@ -4,7 +4,6 @@ __author__ = "Richard Diehl Martinez"
 import logging
 import os
 import random
-from configparser import ConfigParser
 
 import numpy as np
 import torch
@@ -24,13 +23,6 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available() > 0:
         torch.cuda.manual_seed_all(seed)
-
-
-def setup_config(config_file_path: str) -> ConfigParser:
-    """Reads in a config file using ConfigParser"""
-    config = ConfigParser()
-    config.read(config_file_path)
-    return config
 
 
 def setup_logger(config_file_path: str) -> None:
