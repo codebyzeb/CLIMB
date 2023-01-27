@@ -1,0 +1,8 @@
+num_mask_patterns: 10  # 10 is better than fewer
+mask_pattern_size: 2  # used only if probabilistic_masking = False
+probabilistic_masking: True
+mask_probability: 0.15  # used only if probabilistic_masking = true
+leave_unmasked_prob_start: 0.0  # better performance if no unmasking
+leave_unmasked_prob: 0.0  # better performance if no unmasking
+random_token_prob: 0.1
+consecutive_masking: False  # better dev pp and grammatical accuracy when false
