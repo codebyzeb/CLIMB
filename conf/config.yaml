@@ -1,0 +1,10 @@
+defaults: 
+  - base_config
+  - data: strict_small 
+  - model: babyberta
+  - objective: mlm
+  - trainer: basic 
+  - _self_
+
+experiment: 
+  seed: 42 # life universe and everything 

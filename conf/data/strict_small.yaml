@@ -1,0 +1,12 @@
+dataset: 'CamBabyTrainers/BabyLM'
+subdomain: 'strict_small'
+
+sample_with_replacement: False  # this must be False if corpus order is to be preserved during training
+training_order: 'original'  # original or shuffled, use this alongside consecutive_masking=True
+
+tokenizer: 'phueb/BabyBERTa-1'  # larger than 8k slightly reduces performance
+include_punctuation: True
+allow_truncated_sentences: False
+add_prefix_space: True  # better if True, whether to treat first token like any other token (False in GPT-2)
+max_input_length: 128  # unacceptable performance if lower than ~32
+num_sentences_per_input: 1  # if too large -> may exceed CUDA memory, 1 is best for good number-agreement

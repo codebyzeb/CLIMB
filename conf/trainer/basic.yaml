@@ -1,0 +1,7 @@
+batch_size: 16
+optimizer: 'adamw'
+scheduler: 'one-cycle-lr' 
+lr: 1e-4  # 1e-4 is used in fairseq (and performs better here), and 1e-3 is default in huggingface
+num_epochs: 1  # use 1 epoch to use dynamic masking
+num_warmup_steps: 24_000  # 24K used in Roberta-base
+weight_decay: 0.0
