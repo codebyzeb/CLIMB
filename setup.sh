@@ -4,5 +4,6 @@ if [ ! -d "/env" ]; then
 	source env/bin/activate
 	pip install -r requirements.txt
 	pre-commit install
+	huggingface-cli login
 fi 
 
