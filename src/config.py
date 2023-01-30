@@ -11,38 +11,44 @@ class ExperimentParams:
 
 
 @dataclass
-class DataParams:
+class DatasetParams:
     # name of the dataset on huggingface
-    dataset: str
-    subdomain: str
+    name: str
+    subconfig: str
 
-    # sampling parameters
-    sample_with_replacement: bool
-    training_order: str
 
+@dataclass
+class TokenizerParams:
     # data processing parameters
-    tokenizer: str
+    name: str
+    vocab_size: int
+
+    # additional optional kwargs
+    add_prefix_space: Optional[bool] = None
+
+
+@dataclass
+class DataPreprocessingParams:
+    # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
-    allow_truncated_sentences: bool
-    add_prefix_space: bool
     max_input_length: int
-    num_sentences_per_input: int
+    allow_truncated_sentences: bool
 
 
 @dataclass
 class ModelParams:
     # model parameters
-    model: str
+    name: str
 
-    load_from_checkpoint: bool
-    checkpoint_path: Optional[str]
-
-    num_layers: int
+    num_hidden_layers: int
     num_attention_heads: int
     hidden_size: int
     intermediate_size: int
     initializer_range: float
     layer_norm_eps: float
+
+    load_from_checkpoint: bool
+    checkpoint_path: Optional[str] = None
 
 
 @dataclass
@@ -53,32 +59,33 @@ class ObjectiveParams:
     # we duck-type everything to be optional
 
     # MLM-Related parameters
-    num_mask_patterns: Optional[int]
-    mask_pattern_size: Optional[int]
-    probabilistic_masking: Optional[bool]
-    mask_probability: Optional[float]
-    leave_unmasked_prob_start: Optional[float]
-    leave_unmasked_prob: Optional[float]
-    random_token_prob: Optional[float]
-    consecutive_masking: Optional[bool]
+    num_mask_patterns: Optional[int] = None
+    mask_pattern_size: Optional[int] = None
+    probabilistic_masking: Optional[bool] = None
+    mask_probability: Optional[float] = None
+    leave_unmasked_prob_start: Optional[float] = None
+    leave_unmasked_prob: Optional[float] = None
+    random_token_prob: Optional[float] = None
+    consecutive_masking: Optional[bool] = None
 
 
 @dataclass
 class TrainerParams:
     batch_size: int
-
     optimizer: str
     scheduler: str
     lr: float
     num_epochs: int
     num_warmup_steps: int
-    weight_decay: int
+    weight_decay: float
 
 
 @dataclass
 class BabyLMConfig:
     experiment: ExperimentParams
-    data: DataParams
+    dataset: DatasetParams
+    tokenizer: TokenizerParams
+    data_preprocessing: DataPreprocessingParams
     model: ModelParams
     objective: ObjectiveParams
     trainer: TrainerParams
