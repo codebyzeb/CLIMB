@@ -160,3 +160,5 @@ cython_debug/
 #.idea/
 Footer
 
+# hydra outputs 
+outputs/
