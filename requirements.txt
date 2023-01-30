@@ -5,3 +5,8 @@ pre-commit
 hydra
 hydra.core
 omegaconf
+huggingface
+huggingface_hub
+datasets
+transformers
+torch
