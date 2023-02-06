@@ -10,7 +10,10 @@ import hydra
 from datasets import load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
-from transformers import Trainer, TrainingArguments
+
+from src.trainer import CustomTrainer
+from transformers import TrainingArguments
+#from transformers import Trainer, TrainingArguments
 
 from src.config import BabyLMConfig
 from src.models import load_model
@@ -55,15 +58,16 @@ def main(cfg: BabyLMConfig):
     model = load_model(cfg)
 
     # Preprocess data
+
     logger.info("Preprocessing data")
+
     data_preprocessor = DataPreprocessor(cfg, tokenizer)
     processed_dataset = dataset.map(
         data_preprocessor,
         batched=True,
         num_proc=4,
+        remove_columns=['text'],
     )
-
-    # TODO: Load trainer -- encapsualtes the training and objective function
 
     data_collator = load_collator(cfg, tokenizer)
 
@@ -83,11 +87,11 @@ def main(cfg: BabyLMConfig):
     )
 
     # Set up trainer
-    trainer = Trainer(
+    trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=processed_dataset["train"],
-        eval_dataset=None,
+        eval_dataset=processed_dataset["validation"],
         tokenizer=tokenizer,
         data_collator=data_collator,
     )
@@ -95,7 +99,6 @@ def main(cfg: BabyLMConfig):
     # Train model
     trainer.train()
     trainer.save_model()
-
 
 if __name__ == "__main__":
     main()
