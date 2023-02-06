@@ -32,7 +32,6 @@ class DataPreprocessingParams:
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
     max_input_length: int
-    allow_truncated_sentences: bool
 
 
 @dataclass

@@ -14,8 +14,7 @@ experiment:
 
 data_preprocessing:
   include_punctuation: True
-  allow_truncated_sentences: False
-  max_input_length: 128 
+  max_input_length: 128
 
 trainer: 
   batch_size: 16
