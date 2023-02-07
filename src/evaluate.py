@@ -10,6 +10,7 @@ sys.path.append("lib/UnMasked/")
 import logging
 
 import numpy as np
+import argparse as ap
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 from unmasked import configs
@@ -19,8 +20,11 @@ from unmasked.utils import calc_accuracy_from_scores
 
 
 def evaluate_model(
-    model, tokenizer, test_suite_name, lower_case, scoring_method
-):
+    model: AutoModelForMaskedLM, 
+    tokenizer: AutoTokenizer, 
+    test_suite_name: str, 
+    lower_case: bool, 
+    scoring_method: str)-> None:
     """
     Evaluate model on test suite.
     Args:
@@ -42,9 +46,7 @@ def evaluate_model(
 
     # for each paradigm in test suite
     accuracies = []
-    for path_paradigm in (configs.Dirs.test_suites / test_suite_name).glob(
-        "*.txt"
-    ):
+    for path_paradigm in (configs.Dirs.test_suites / test_suite_name).glob("*.txt"): #SANITY CHECK
 
         # scoring
         logging.info(
@@ -65,29 +67,6 @@ def evaluate_model(
     # TODO: Save breakdown of accuracies to file
     logging.info(f"Overall accuracy={np.mean(accuracies):.4f}")
 
-    # for each paradigm in test suite
-    accuracies = []
-    for path_paradigm in (configs.Dirs.test_suites / TEST_SUITE_NAME).glob(
-        "*.txt"
-    ):
-
-        # scoring
-        print(
-            f"Scoring {path_paradigm.name:<60} with {MODEL_REPO:<40} and method={scoring_method}"
-        )
-        scores = score_model_on_paradigm(
-            model, tokenizer, path_paradigm, lower_case=LOWER_CASE
-        )
-
-        assert len(scores) == num_expected_scores
-
-        # compute accuracy
-        accuracy = calc_accuracy_from_scores(scores, scoring_method)
-
-        # collect
-        accuracies.append(accuracy)
-
-    print(f"Overall accuracy={np.mean(accuracies):.4f}")
 
 
 if __name__ == "__main__":
@@ -95,31 +74,28 @@ if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
+    ap = ap.ArgumentParser()
+    ap.add_argument("--model_repo", type=str, help="Path to model repo.", required=True)
+    ap.add_argument("--test_suite_name", type=str, choices=['zorro', 'blimp'], help="Name of test suite.", default="zorro")
+    ap.add_argument("--lower_case", type=bool,help="Should model be evaluated on lower-cased input?", default=True)
+    ap.add_argument("--scoring_method", type=str,choices=['mlm','holistic'], help="Scoring method.", default="mlm")
 
-    # Check if model repo is specified
-    if len(sys.argv) < 2:
-        print("Please specify a model repo to evaluate.")
-        sys.exit(1)
-    model_repo = sys.argv[1]
+    args = ap.parse_args()
 
-    lower_case = True  # should model be evaluated on lower-cased input?
-    test_suite_name = ["zorro", "blimp"][0]
-
-    if test_suite_name == "blimp":
+    if args.test_suite_name == "blimp":
         num_expected_scores = 2000
-    elif test_suite_name == "zorro":
+    elif args.test_suite_name == "zorro":
         num_expected_scores = 4000
     else:
         raise AttributeError('Invalid "test_suite_name".')
 
     # load from repo
     tokenizer = AutoTokenizer.from_pretrained(
-        model_repo,
-        local_files_only=True,
+        args.model_repo,
         add_prefix_space=True,  # this must be True for BabyBERTa
     )
     model = AutoModelForMaskedLM.from_pretrained(
-        model_repo, local_files_only=True
+        args.model_repo,
     )
 
     model.eval()
@@ -129,5 +105,5 @@ if __name__ == "__main__":
 
     # evaluate
     evaluate_model(
-        model, tokenizer, test_suite_name, lower_case, scoring_method="mlm"
+        model, tokenizer, args.test_suite_name, args.lower_case, scoring_method=args.scoring_method
     )
