@@ -108,7 +108,24 @@ class CustomTrainer(Trainer):
                 data_collator, description="training"
             )
 
+        # TODO (Hope): We might also change the sampler we use, to similar to the collator, take 
+        # in an argument that tells it what step of training we are at. Then again, during training
+        # the sampler would have to use this information to inform the next batch of data that 
+        # it returns.
         train_sampler = self._get_train_sampler()
+
+
+        # TODO (Hope): Take a look at the on_step_end hook in the trainer class:
+        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer_callback.py#L252
+        # which is called at this point by the trainer here:
+        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer.py#L1866
+
+        # You'll see that it the hook is called as a method of the CallbackHandler class: 
+        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer_callback.py#L290
+        # But the CallBackHandler is passed a reference to the train_dataloader (i.e. this class)
+        # so from the callbackhandler you should be able to interact directly with any instance
+        # variables of this class, like the current step of training which in turn can be used 
+        # to update the sampler and data collator with smart sampling and masking strategies.
 
         return DataLoader(
             train_dataset,
