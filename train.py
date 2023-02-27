@@ -10,17 +10,20 @@ import hydra
 from datasets import load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
-
-from src.trainer import CustomTrainer
 from transformers import TrainingArguments
-#from transformers import Trainer, TrainingArguments
 
+# wandb for logging metrics
+import wandb
 from src.config import BabyLMConfig
 from src.models import load_model
 from src.objective import load_collator
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
+from src.trainer import CustomTrainer
 from src.utils.setup import set_seed
+
+# from transformers import Trainer, TrainingArguments
+
 
 # type-checks dynamic config file
 cs = ConfigStore.instance()
@@ -32,7 +35,6 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
-
     assert (
         "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
     ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
@@ -66,10 +68,16 @@ def main(cfg: BabyLMConfig):
         data_preprocessor,
         batched=True,
         num_proc=4,
-        remove_columns=['text'],
+        remove_columns=["text"],
     )
 
     data_collator = load_collator(cfg, tokenizer)
+
+    # Setting up wandb
+    wandb.config = OmegaConf.to_container(
+        cfg, resolve=True, throw_on_missing=True
+    )
+    wandb.init(project="dev", entity="baby-lm")
 
     # Set up training arguments
     training_args = TrainingArguments(
@@ -84,6 +92,7 @@ def main(cfg: BabyLMConfig):
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
         save_steps=40_000,
+        report_to="wandb",  # enable logging to W&B
     )
 
     # Set up trainer
@@ -99,6 +108,7 @@ def main(cfg: BabyLMConfig):
     # Train model
     trainer.train()
     trainer.save_model()
+
 
 if __name__ == "__main__":
     main()

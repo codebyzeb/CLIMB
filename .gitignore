@@ -161,3 +161,16 @@ Footer
 
 # hydra outputs 
 outputs/
+
+# any slurm output files 
+*.out
+
+# any checkpoint files 
+checkpoint*
+
+# wandb
+wandb/
+
+# we don't need all the images in misc 
+misc/default.png
+misc/profile.png
