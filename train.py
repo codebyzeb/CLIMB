@@ -2,6 +2,7 @@
 
 import logging
 import os
+import textstat
 
 # config-related imports
 import hydra
@@ -64,9 +65,8 @@ def main(cfg: BabyLMConfig):
     model = load_model(cfg)
 
     # Preprocess data
-
     logger.info("Preprocessing data")
-
+    
     data_preprocessor = DataPreprocessor(cfg, tokenizer)
     processed_dataset = dataset.map(
         data_preprocessor,

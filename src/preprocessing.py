@@ -3,6 +3,7 @@ Class for preprocessing the data, including tokenization, etc.
 """
 
 # typing imports
+import string
 from transformers import PreTrainedTokenizer
 
 from .config import BabyLMConfig
@@ -21,8 +22,6 @@ class DataPreprocessor(object):
 
         if not self.include_punctuation:
             examples['text'] = [line.translate(str.maketrans("", "", string.punctuation)) for line in examples['text']]
-
-        # NOTE: Here is where we add more preprocessing steps
 
         # tokenize the input text
         return self.tokenizer(
