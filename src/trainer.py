@@ -1,6 +1,9 @@
-import os
-import shutil
-from pathlib import Path
+from transformers import Trainer
+
+from torch.utils.data import DataLoader, SequentialSampler, RandomSampler, Subset, SubsetRandomSampler
+from transformers.trainer_pt_utils import LengthGroupedSampler
+
+from typing import Optional
 
 import datasets
 from huggingface_hub import Repository, create_repo
@@ -9,93 +12,51 @@ from transformers import Trainer
 from transformers.trainer_utils import HubStrategy
 from transformers.utils import get_full_repo_name
 
+class CustomTrainer(Trainer): 
 
-class CustomTrainer(Trainer):
-    def __init__(self, experiment_group: str, experiment_name: str, **kwargs):
-        """
-        We need to override the __init__ method to add the experiment group and experiment name.
-        We use the group name and experiment name for version controlling/identifying the current
-        run in, for example, huggingface, wandb ...
+    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
+        """Here we have different sampling methods, specified by the `sampling_strategy` arg in a `CustomTrainingArguments` object."""
 
-        Args:
-            experiment_group (str): Name of the group that the current experiment belongs to
-            experiment_name (str): Name of the experiment - needs to be set at runtime
-        """
-        self.experiment_group = experiment_group
-        self.experiment_name = experiment_name
-        super().__init__(**kwargs)
+        # TODO: we want to have some burn-in period where we use the default sampler, and then
+        # after that we want to switch to our custom sampler. We can do this by having a
+        # `sampling_strategy` arg in the `CustomTrainingArguments` object, and then using that
+        # to decide which sampler to use.
+        # TODO: we want to know which step of training we're on, which comes from self.state.global_step
 
-    def init_git_repo(self, at_init: bool = False):
-        """
-        Initializes a git repo in `self.args.hub_model_id`.
-        Args:
-            at_init (`bool`, *optional*, defaults to `False`):
-                Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is
-                `True` and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped
-                out.
-        """
-        if not self.is_world_process_zero():
-            return
-        if self.args.hub_model_id is None:
-            repo_name = Path(self.args.output_dir).absolute().name
-        else:
-            repo_name = self.args.hub_model_id
-        if "/" not in repo_name:
-            repo_name = get_full_repo_name(
-                repo_name, token=self.args.hub_token
-            )
+        generator = torch.Generator().manual_seed(self.args.seed)
 
-        # Make sure the repo exists.
-        create_repo(
-            repo_name,
-            token=self.args.hub_token,
-            private=self.args.hub_private_repo,
-            exist_ok=True,
-        )
-        try:
-            self.repo = Repository(
-                self.args.output_dir,
-                clone_from=repo_name,
-                token=self.args.hub_token,
-                revision=self.experiment_name,
-            )
-        except EnvironmentError:
-            if self.args.overwrite_output_dir and at_init:
-                # Try again after wiping output_dir
-                shutil.rmtree(self.args.output_dir)
-                self.repo = Repository(
-                    self.args.output_dir,
-                    clone_from=repo_name,
-                    token=self.args.hub_token,
-                    revision=self.experiment_name,
+        # Build the sampler.
+        if self.args.group_by_length:
+            # group inputs by similar lengths to minimize padding
+            if isinstance(self.train_dataset, datasets.Dataset):
+                lengths = (
+                    self.train_dataset[self.args.length_column_name]
+                    if self.args.length_column_name in self.train_dataset.column_names
+                    else None
                 )
             else:
-                raise
-
-        try:
-            # the branch name should have been created already by the `create_repo` call
-            self.repo.git_pull()
-        except OSError:
-            # if the repo is empty, the git_pull will fail
-            pass
-
-        # By default, ignore the checkpoint folders
-        if (
-            not os.path.exists(
-                os.path.join(self.args.output_dir, ".gitignore")
+                lengths = None
+            model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
+            
+            return LengthGroupedSampler(
+                self.args.train_batch_size * self.args.gradient_accumulation_steps,
+                dataset=self.train_dataset,
+                lengths=lengths,
+                model_input_name=model_input_name,
+                generator=generator,
             )
-            and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS
-        ):
-            with open(
-                os.path.join(self.args.output_dir, ".gitignore"),
-                "w",
-                encoding="utf-8",
-            ) as writer:
-                writer.writelines(["checkpoint-*/"])
-
-        self.push_in_progress = None
-
-    def get_train_dataloader(self):
+        # TODO: have if/elifs for other sampling strategies. Dummy examples: "reading-comprehension", "length-based", "random"
+        # do we want to have a generator of different samplers and we take a step through them?
+        # elif self.args.sampling_strategy == "reading-comprehension":
+        if self.state.global_step >= 1000 and self.args.sampling_strategy =="reading-comprehension":
+            pass
+        elif self.state.global_step >= 1000 and self.args.sampling_strategy =="length-based":
+            pass
+        else:
+            return SubsetRandomSampler(range(0, 1000), generator=generator
+            # return SequentialSampler(self.train_dataset, generator=generator)
+            
+    def get_train_dataloader(self): 
         train_dataset = self.train_dataset
         data_collator = self.data_collator
 
@@ -108,12 +69,13 @@ class CustomTrainer(Trainer):
                 data_collator, description="training"
             )
 
+        
         # TODO (Hope): We might also change the sampler we use, to similar to the collator, take 
         # in an argument that tells it what step of training we are at. Then again, during training
         # the sampler would have to use this information to inform the next batch of data that 
         # it returns.
+        
         train_sampler = self._get_train_sampler()
-
 
         # TODO (Hope): Take a look at the on_step_end hook in the trainer class:
         # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer_callback.py#L252
