@@ -1,4 +1,4 @@
-if [ ! -d "/env" ]; then
+if [ ! -d "env" ]; then
 	module load python/3.7
 	virtualenv -p python3.7 env
 	source env/bin/activate
@@ -7,5 +7,9 @@ if [ ! -d "/env" ]; then
 	pre-commit install
 	huggingface-cli login
 	wandb login
+else
+	source env/bin/activate
+	source .env
+	export PATH="$(pwd)/lib/bin:$PATH"
 fi 
 
