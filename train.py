@@ -16,7 +16,7 @@ from transformers import TrainingArguments
 import wandb
 from src.config import BabyLMConfig
 from src.models import load_model
-from src.objective import load_collator
+from src.objective import load_objective_collator
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
@@ -38,6 +38,10 @@ def main(cfg: BabyLMConfig):
     assert (
         "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
     ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
+
+    missing_keys: set[str] = OmegaConf.missing_keys(cfg)
+    if missing_keys:
+        raise RuntimeError(f"Missing keys in config: \n {missing_keys}")
 
     logger.info(f"Config: {OmegaConf.to_yaml(cfg)}")
 
@@ -67,47 +71,61 @@ def main(cfg: BabyLMConfig):
     processed_dataset = dataset.map(
         data_preprocessor,
         batched=True,
-        num_proc=4,
+        num_proc=64,
         remove_columns=["text"],
     )
 
-    data_collator = load_collator(cfg, tokenizer)
+    objective_collator = load_objective_collator(cfg, tokenizer)
 
     # Setting up wandb
     wandb.config = OmegaConf.to_container(
         cfg, resolve=True, throw_on_missing=True
     )
-    wandb.init(project="dev", entity="baby-lm")
+    wandb.init(project=cfg.experiment.group, entity="baby-lm")
 
     # Set up training arguments
+    # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
+    # initialize the name of the current experiment so that it doesn't interfere with the name
+    # of other experiments, and also so that we can store checkpoints of that run on HF hub;
+    # alternatively maybe we use ray tune which is natively supported by Trainer
     training_args = TrainingArguments(
-        output_dir=".",
+        output_dir=f"checkpoints/{cfg.experiment.group}/{cfg.experiment.name}",
         overwrite_output_dir=False,
         do_train=True,
         do_eval=False,
         do_predict=False,
-        per_device_train_batch_size=cfg.trainer.batch_size,
+        per_device_train_batch_size=cfg.trainer.batch_size,  # NOTE: We can should maybe use auto_find_batch_size
         learning_rate=cfg.trainer.lr,
-        max_steps=160_000,
+        max_steps=cfg.trainer.max_training_steps,
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
-        save_steps=40_000,
-        report_to="wandb",  # enable logging to W&B
+        save_steps=1,
+        report_to="wandb"
+        if cfg.experiment.dry_run is False
+        else None,  # wandb deactivated for dry runs
+        hub_strategy="every_save",
+        push_to_hub=not cfg.experiment.dry_run,
+        hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
+        if not cfg.experiment.dry_run
+        else None,
+        hub_token=os.environ["HF_WRITE_TOKEN"]
+        if not cfg.experiment.dry_run
+        else None,
     )
 
     # Set up trainer
     trainer = CustomTrainer(
+        experiment_group=cfg.experiment.group,
+        experiment_name=cfg.experiment.name,
         model=model,
         args=training_args,
         train_dataset=processed_dataset["train"],
         eval_dataset=processed_dataset["validation"],
         tokenizer=tokenizer,
-        data_collator=data_collator,
+        data_collator=objective_collator,
     )
 
-    # Train model
-    trainer.train()
-    trainer.save_model()
+    trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
 
 
 if __name__ == "__main__":
