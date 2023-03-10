@@ -1,3 +1,2 @@
-name: 'CamBabyTrainers/BabyBERTa-1-75000'  # larger than 8k slightly reduces performance
+name: 'CamBabyTrainers/BabyBERTa-1-75000-tokenizer'  # larger than 8k slightly reduces performance
 vocab_size: 75000
-

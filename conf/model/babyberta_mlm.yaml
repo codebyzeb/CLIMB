@@ -1,6 +1,6 @@
 name: 'roberta_pre_layer_norm_for_masked_lm'
 
-load_from_checkpoint: False
+resume_checkpoint_path: null
 
 # kwargs for model initialization 
 num_hidden_layers: 8

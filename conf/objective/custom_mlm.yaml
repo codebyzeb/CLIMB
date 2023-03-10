@@ -1,3 +1,7 @@
+# NOTE: Currently not used
+
+name: "custom_mlm"
+
 num_mask_patterns: 10  # 10 is better than fewer
 mask_pattern_size: 2  # used only if probabilistic_masking = False
 probabilistic_masking: True
