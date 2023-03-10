@@ -7,9 +7,10 @@ if [ ! -d "env" ]; then
 	pre-commit install
 	huggingface-cli login
 	wandb login
-else
+else 
 	source env/bin/activate
-	source .env
-	export PATH="$(pwd)/lib/bin:$PATH"
-fi 
+fi
+source .env
+export PATH="$(pwd)/lib/bin:$PATH"
+
 
