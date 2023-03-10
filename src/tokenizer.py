@@ -41,9 +41,7 @@ def load_tokenizer(cfg: BabyLMConfig, dataset: Dataset) -> PreTrainedTokenizer:
             dataset["train"], vocab_size=cfg.tokenizer.vocab_size
         )
 
-        new_tokenizer_name = (
-            f"CamBabyTrainers/{tokenizer_name}-{cfg.tokenizer.vocab_size}"
-        )
+        new_tokenizer_name = f"CamBabyTrainers/{tokenizer_name}-{cfg.tokenizer.vocab_size}-tokenizer"
         logger.info(f"Pushing trained tokenizer to hub: {new_tokenizer_name}")
         tokenizer.push_to_hub(
             new_tokenizer_name, use_auth_token=os.environ["HF_WRITE_TOKEN"]
