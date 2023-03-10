@@ -4,7 +4,8 @@ defaults:
   - dataset: strict_small 
   - tokenizer: babyberta_tuned
   - model: babyberta_mlm
-  - objective: mlm
+  - objective: base_mlm
+  - data_preprocessing: curriculum_learning
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'
@@ -17,10 +18,7 @@ data_preprocessing:
   max_input_length: 128
 
 trainer: 
-  batch_size: 16
-  optimizer: 'adamw'
-  scheduler: 'one-cycle-lr' 
+  batch_size: 128 # across 8 GPUs gives an effective batch size of 1024
   lr: 1e-4  # 1e-4 is used in fairseq (and performs better here), and 1e-3 is default in huggingface
-  num_epochs: 1  # use 1 epoch to use dynamic masking
-  num_warmup_steps: 24_000  # 24K used in Roberta-base
-  weight_decay: 0.0
+  num_warmup_steps: 14_000  
+  max_training_steps: 100_000 # number of training steps 

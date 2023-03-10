@@ -2,12 +2,24 @@
 Followed from the BabyBERTa repo."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
+
+from omegaconf import MISSING
 
 
 @dataclass
 class ExperimentParams:
     seed: int
+
+    # Name of the experiment - needs to be set at runtime
+    name: str = MISSING
+
+    # Name of the group that the current experiment belongs to
+    # analogous to 'project' in wandb
+    group: str = "dev"
+
+    # whether to run the experiment only locally
+    dry_run: bool = False
 
 
 @dataclass
@@ -32,6 +44,7 @@ class DataPreprocessingParams:
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
     max_input_length: int
+    callback_functions: Optional[List[str]] = None
 
 
 @dataclass
@@ -46,37 +59,39 @@ class ModelParams:
     initializer_range: float
     layer_norm_eps: float
 
-    load_from_checkpoint: bool
-    checkpoint_path: Optional[str] = None
+    resume_checkpoint_path: Optional[str] = None
 
 
 @dataclass
 class ObjectiveParams:
     # training objective parameters
 
+    name: str
+
     # NOTE: the objective can have arbitrary parameters, so
     # we duck-type everything to be optional
 
-    # MLM-Related parameters
+    # Custom MLM-Related parameters
+    # See: https://github.com/phueb/BabyBERTa/blob/master/babyberta/dataset.py#L250
+    # For information on how custom MLM is implemented
     num_mask_patterns: Optional[int] = None
     mask_pattern_size: Optional[int] = None
     probabilistic_masking: Optional[bool] = None
-    mask_probability: Optional[float] = None
     leave_unmasked_prob_start: Optional[float] = None
     leave_unmasked_prob: Optional[float] = None
     random_token_prob: Optional[float] = None
     consecutive_masking: Optional[bool] = None
 
+    # mask_probability is used by every mlm objective (i.e. custom and base)
+    mask_probability: Optional[float] = None
+
 
 @dataclass
 class TrainerParams:
     batch_size: int
-    optimizer: str
-    scheduler: str
     lr: float
-    num_epochs: int
     num_warmup_steps: int
-    weight_decay: float
+    max_training_steps: int
 
 
 @dataclass
