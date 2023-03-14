@@ -20,7 +20,6 @@ from src.objective import load_objective_collator
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
-from src.trainer import CustomTrainer
 from src.utils.setup import set_seed
 
 #from transformers import Trainer, TrainingArguments
@@ -89,6 +88,7 @@ def main(cfg: BabyLMConfig):
             name=cfg.experiment.name,
             entity="baby-lm",
         )
+
 
     # Set up training arguments
     # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
