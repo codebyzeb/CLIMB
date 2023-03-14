@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from pathlib import Path
 import shutil
 from transformers.trainer_pt_utils import LengthGroupedSampler
@@ -19,7 +20,6 @@ from .dataloader import CustomDataLoader
 # from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind
 
 logger = logging.getLogger(__name__)
-
 
 class CustomSubsetSampler(torch.utils.data.SubsetRandomSampler):
     """
@@ -55,7 +55,6 @@ class CurriculumLearningCallback(TrainerCallback):
     """
 
     def on_step_end(self, args, state, control, train_dataloader=None, **kwargs):
-        # print("CALLING ON STEP END")
         train_dataloader.global_stepnum += 1
 
 class CustomTrainer(Trainer): 
@@ -220,6 +219,76 @@ class CustomTrainer(Trainer):
 
         self.push_in_progress = None
 
+    def init_git_repo(self, at_init: bool = False):
+        """
+        Initializes a git repo in `self.args.hub_model_id`.
+        Args:
+            at_init (`bool`, *optional*, defaults to `False`):
+                Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is
+                `True` and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped
+                out.
+        """
+        if not self.is_world_process_zero():
+            return
+        if self.args.hub_model_id is None:
+            repo_name = Path(self.args.output_dir).absolute().name
+        else:
+            repo_name = self.args.hub_model_id
+        if "/" not in repo_name:
+            repo_name = get_full_repo_name(
+                repo_name, token=self.args.hub_token
+            )
+
+        # Make sure the repo exists.
+        create_repo(
+            repo_name,
+            token=self.args.hub_token,
+            private=self.args.hub_private_repo,
+            exist_ok=True,
+        )
+        try:
+            self.repo = Repository(
+                self.args.output_dir,
+                clone_from=repo_name,
+                token=self.args.hub_token,
+                revision=self.experiment_name,
+            )
+        except EnvironmentError:
+            if self.args.overwrite_output_dir and at_init:
+                # Try again after wiping output_dir
+                shutil.rmtree(self.args.output_dir)
+                self.repo = Repository(
+                    self.args.output_dir,
+                    clone_from=repo_name,
+                    token=self.args.hub_token,
+                    revision=self.experiment_name,
+                )
+            else:
+                raise
+
+        try:
+            # the branch name should have been created already by the `create_repo` call
+            self.repo.git_pull()
+        except OSError:
+            # if the repo is empty, the git_pull will fail
+            pass
+
+        # By default, ignore the checkpoint folders
+        if (
+            not os.path.exists(
+                os.path.join(self.args.output_dir, ".gitignore")
+            )
+            and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS
+        ):
+            with open(
+                os.path.join(self.args.output_dir, ".gitignore"),
+                "w",
+                encoding="utf-8",
+            ) as writer:
+                writer.writelines(["checkpoint-*/"])
+
+        self.push_in_progress = None
+
     def get_train_dataloader(self):
 
         train_dataset = self.train_dataset
@@ -246,7 +315,7 @@ class CustomTrainer(Trainer):
         train_sampler = self._get_train_sampler()
         assert isinstance(train_sampler, torch.utils.data.SubsetRandomSampler) 
 
-        return CustomDataLoader(
+        return CustomDataloader(
             train_dataset,
             batch_size=self._train_batch_size,
             sampler=train_sampler,
@@ -257,7 +326,7 @@ class CustomTrainer(Trainer):
             #worker_init_fn=seed_worker,
         )
 
-
     def training_step(self, *args, **kwargs):
         print("CALLING TRAINING STEP: ", self.state.global_step)
         return super().training_step(*args, **kwargs)
+
