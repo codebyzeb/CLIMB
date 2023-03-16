@@ -78,10 +78,13 @@ def main(cfg: BabyLMConfig):
     objective_collator = load_objective_collator(cfg, tokenizer)
 
     # Setting up wandb
-    wandb.config = OmegaConf.to_container(
-        cfg, resolve=True, throw_on_missing=True
-    )
-    wandb.init(project=cfg.experiment.group, entity="baby-lm")
+    if cfg.experiment.dry_run:
+        os.environ["WANDB_MODE"] = "disabled"
+    else:
+        wandb.config = OmegaConf.to_container(
+            cfg, resolve=True, throw_on_missing=True
+        )
+        wandb.init(project=cfg.experiment.group, entity="baby-lm")
 
     # Set up training arguments
     # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
@@ -101,7 +104,7 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         save_steps=1,
         report_to="wandb"
-        if cfg.experiment.dry_run is False
+        if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.dry_run,
