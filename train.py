@@ -75,13 +75,11 @@ def main(cfg: BabyLMConfig):
         os.environ["WANDB_DISABLED"] = "true"
         os.environ["WANDB_MODE"] = "disabled"
     else:
+        # These environment variables get picked up by Trainer
+        os.environ["WANDB_PROJECT"] = cfg.experiment.group
+        os.environ["WANDB_ENTITY"] = "baby-lm"
         wandb.config = OmegaConf.to_container(
             cfg, resolve=True, throw_on_missing=True
-        )
-        wandb.init(
-            project=cfg.experiment.group,
-            name=cfg.experiment.name,
-            entity="baby-lm",
         )
 
     # Set up training arguments
@@ -103,6 +101,7 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         save_steps=cfg.trainer.max_training_steps
         // 10,  # checkpoint every 10% of training
+        run_name=cfg.experiment.name,
         report_to="wandb"
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
