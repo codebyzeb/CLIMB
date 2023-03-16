@@ -12,7 +12,7 @@
 #! Name of the job:
 #SBATCH -J baby-lm
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
-#SBATCH -A BUTTERY-SL3-GPU
+#SBATCH -A BUTTERY-SL2-GPU
 #! How many whole nodes should be allocated?
 #SBATCH --nodes=2
 #! How many (MPI) tasks will there be in total?
@@ -23,7 +23,7 @@
 #SBATCH --gres=gpu:4
 
 #! How much wallclock time will be required?
-#SBATCH --time=2:00:00
+#SBATCH --time=10:00:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=NONE
 #! Uncomment this to prevent the job from being requeued (e.g. if
@@ -88,8 +88,7 @@ export LOGLEVEL=INFO
 
 #! CD back to root directory
 cd ..
-source env/bin/activate 
-source .env
+source setup.sh
 
 srun torchrun \
 --nnodes 2 \
