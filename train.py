@@ -101,7 +101,8 @@ def main(cfg: BabyLMConfig):
         max_steps=cfg.trainer.max_training_steps,
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
-        save_steps=1,
+        save_steps=cfg.trainer.max_training_steps
+        // 10,  # checkpoint every 10% of training
         report_to="wandb"
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
