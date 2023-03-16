@@ -84,7 +84,11 @@ def main(cfg: BabyLMConfig):
         wandb.config = OmegaConf.to_container(
             cfg, resolve=True, throw_on_missing=True
         )
-        wandb.init(project=cfg.experiment.group, entity="baby-lm")
+        wandb.init(
+            project=cfg.experiment.group,
+            name=cfg.experiment.name,
+            entity="baby-lm",
+        )
 
     # Set up training arguments
     # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
