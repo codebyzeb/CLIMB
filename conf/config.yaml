@@ -21,4 +21,9 @@ trainer:
   batch_size: 128 # across 8 GPUs gives an effective batch size of 1024
   lr: 1e-4  # 1e-4 is used in fairseq (and performs better here), and 1e-3 is default in huggingface
   num_warmup_steps: 14_000  
-  max_training_steps: 100_000 # number of training steps 
+  max_training_steps: 100_000 # number of training steps
+  # scoring_fn: "n_gram_perplexity"
+  pacing_fn: "linear"
+  pacing_fn_kwargs: {"start_percent": 0.1,
+                    "end_percent": 0.8,
+                    "num_steps": 10_000}

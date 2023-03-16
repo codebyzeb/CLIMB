@@ -1,62 +1,227 @@
-from transformers import Trainer
-
-from torch.utils.data import DataLoader, SequentialSampler, RandomSampler, Subset, SubsetRandomSampler
+from pathlib import Path
+import shutil
 from transformers.trainer_pt_utils import LengthGroupedSampler
-
-from typing import Optional
+from typing import Optional, Iterator
 
 import datasets
 from huggingface_hub import Repository, create_repo
+import torch 
+import numpy as np
 from torch.utils.data import DataLoader
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback, DataCollatorForLanguageModeling
 from transformers.trainer_utils import HubStrategy
 from transformers.utils import get_full_repo_name
 
+import logging
+
+from .dataloader import CustomDataLoader
+# from torch.utils.data import DataLoader
+# from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind
+
+logger = logging.getLogger(__name__)
+
+
+class CustomSubsetSampler(torch.utils.data.SubsetRandomSampler):
+    """
+    A custom sampler that samples a subset of the dataset.
+    """
+    def __init__(self, indices, pacing_fn, generator=None, global_stepnum=0) -> None:
+        self.indices = indices
+        self.pacing_fn = pacing_fn
+        self.generator = generator
+        self.global_stepnum = global_stepnum
+
+
+    def __iter__(self) -> Iterator[int]:
+        # this iter function is called by the dataloader
+        # and will depend on the output of the pacing function
+        upper_limit = self.pacing_fn(self.global_stepnum)
+        # print(f"UPPER INDEX LIMIT FOR GLOBAL STEPNUM {self.global_stepnum} IS: {upper_limit}")
+        for i in torch.randperm(len(self.indices[:upper_limit]), generator=self.generator):
+            assert i < upper_limit, f"i: {i} is greater than upper limit: {upper_limit}"
+            yield self.indices[i]
+        # for i in torch.randperm(len(self.indices), generator=self.generator):
+    #         yield self.indices[i]
+
+    def __len__(self) -> int:
+        # NOTE: this does not update with the pacing_fn
+        # always returns a static length
+        return len(self.indices)
+    
+
+class CurriculumLearningCallback(TrainerCallback):
+    """
+    A [`TrainerCallback`] that updates the data sampler and data collator with the current global step of training.
+    """
+
+    def on_step_end(self, args, state, control, train_dataloader=None, **kwargs):
+        # print("CALLING ON STEP END")
+        train_dataloader.global_stepnum += 1
+
 class CustomTrainer(Trainer): 
+    def __init__(self, experiment_group: str, experiment_name: str,
+                 pacing_fn: Optional[str]=None, pacing_fn_kwargs: Optional[dict]=None, scoring_fn: Optional[str] = None,
+                 **kwargs):
+        """
+        We need to override the __init__ method to add the experiment group and experiment name.
+        We use the group name and experiment name for version controlling/identifying the current
+        run in, for example, huggingface, wandb ...
 
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        """Here we have different sampling methods, specified by the `sampling_strategy` arg in a `CustomTrainingArguments` object."""
+        Args:
+            experiment_group (str): Name of the group that the current experiment belongs to
+            experiment_name (str): Name of the experiment - needs to be set at runtime
+        """
+        self.experiment_group = experiment_group
+        self.experiment_name = experiment_name
 
-        # TODO: we want to have some burn-in period where we use the default sampler, and then
-        # after that we want to switch to our custom sampler. We can do this by having a
-        # `sampling_strategy` arg in the `CustomTrainingArguments` object, and then using that
-        # to decide which sampler to use.
-        # TODO: we want to know which step of training we're on, which comes from self.state.global_step
+        # relevant for curriculum learning
+        self.scoring_fn = scoring_fn
+        self.pacing_fn = pacing_fn
+        self.pacing_fn_kwargs = pacing_fn_kwargs
 
-        generator = torch.Generator().manual_seed(self.args.seed)
+        super().__init__(**kwargs)
+        self.add_callback(CurriculumLearningCallback())
 
-        # Build the sampler.
-        if self.args.group_by_length:
-            # group inputs by similar lengths to minimize padding
-            if isinstance(self.train_dataset, datasets.Dataset):
-                lengths = (
-                    self.train_dataset[self.args.length_column_name]
-                    if self.args.length_column_name in self.train_dataset.column_names
-                    else None
+    def get_pacing_fn(self):
+        """
+        Modified from: https://github.com/google-research/understanding-curricula/blob/main/utils/utils.py
+        Return a pacing function  w.r.t. current step
+        params:
+        a:  percentage of total step when reaching to the full data. 
+        b:  percentatge of total data at the begining of the training.
+        """
+        ###############
+        a = self.pacing_fn_kwargs.end_percent
+        b = self.pacing_fn_kwargs.start_percent
+        # TODO: determine whether to specify this directly or use the max steps
+        # if max steps, there's a possibility training is curtailed by early stopping
+        # and the full training data is never seen
+        total_step = self.pacing_fn_kwargs.num_steps
+        # total_step = self.args.max_steps
+ 
+        total_data = len(self.train_dataset)
+        pacing_fn = self.pacing_fn
+        
+        index_start = b*total_data
+        if pacing_fn == 'linear':
+            rate = (total_data - index_start)/(a*total_step)
+            def _linear_function(step):
+                return int(rate *step + index_start)
+            return _linear_function
+        
+        elif pacing_fn == 'quad':
+            rate = (total_data-index_start)/(a*total_step)**2  
+            def _quad_function(step):
+                return int(rate*step**2 + index_start)
+            return _quad_function
+        
+        elif pacing_fn == 'root':
+            rate = (total_data-index_start)/(a*total_step)**0.5
+            def _root_function(step):
+                return int(rate *step**0.5 + index_start)
+            return _root_function
+        
+        elif pacing_fn == 'step':
+            threshold = a*total_step
+            def _step_function(step):
+                return int( total_data*(step//threshold) +index_start)
+            return _step_function      
+
+        elif pacing_fn == 'exp':
+            c = 10
+            tilde_b  = index_start
+            tilde_a  = a*total_step
+            rate =  (total_data-tilde_b)/(np.exp(c)-1)
+            constant = c/tilde_a
+            def _exp_function(step):
+                if not np.isinf(np.exp(step *constant)):
+                    return int(rate*(np.exp(step*constant)-1) + tilde_b )
+                else:
+                    return total_data
+            return _exp_function
+
+        elif pacing_fn == 'log':
+            c = 10
+            tilde_b  = index_start
+            tilde_a  = a*total_step
+            ec = np.exp(-c)
+            N_b = (total_data-tilde_b)
+            def _log_function(step):
+                return int(N_b*(1+(1./c)*np.log(step/tilde_a+ ec)) + tilde_b )
+            return _log_function
+    
+    def init_git_repo(self, at_init: bool = False):
+        """
+        Initializes a git repo in `self.args.hub_model_id`.
+        Args:
+            at_init (`bool`, *optional*, defaults to `False`):
+                Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is
+                `True` and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped
+                out.
+        """
+        if not self.is_world_process_zero():
+            return
+        if self.args.hub_model_id is None:
+            repo_name = Path(self.args.output_dir).absolute().name
+        else:
+            repo_name = self.args.hub_model_id
+        if "/" not in repo_name:
+            repo_name = get_full_repo_name(
+                repo_name, token=self.args.hub_token
+            )
+
+        # Make sure the repo exists.
+        create_repo(
+            repo_name,
+            token=self.args.hub_token,
+            private=self.args.hub_private_repo,
+            exist_ok=True,
+        )
+        try:
+            self.repo = Repository(
+                self.args.output_dir,
+                clone_from=repo_name,
+                token=self.args.hub_token,
+                revision=self.experiment_name,
+            )
+        except EnvironmentError:
+            if self.args.overwrite_output_dir and at_init:
+                # Try again after wiping output_dir
+                shutil.rmtree(self.args.output_dir)
+                self.repo = Repository(
+                    self.args.output_dir,
+                    clone_from=repo_name,
+                    token=self.args.hub_token,
+                    revision=self.experiment_name,
                 )
             else:
-                lengths = None
-            model_input_name = self.tokenizer.model_input_names[0] if self.tokenizer is not None else None
-            
-            return LengthGroupedSampler(
-                self.args.train_batch_size * self.args.gradient_accumulation_steps,
-                dataset=self.train_dataset,
-                lengths=lengths,
-                model_input_name=model_input_name,
-                generator=generator,
+                raise
+
+        try:
+            # the branch name should have been created already by the `create_repo` call
+            self.repo.git_pull()
+        except OSError:
+            # if the repo is empty, the git_pull will fail
+            pass
+
+        # By default, ignore the checkpoint folders
+        if (
+            not os.path.exists(
+                os.path.join(self.args.output_dir, ".gitignore")
             )
-        # TODO: have if/elifs for other sampling strategies. Dummy examples: "reading-comprehension", "length-based", "random"
-        # do we want to have a generator of different samplers and we take a step through them?
-        # elif self.args.sampling_strategy == "reading-comprehension":
-        if self.state.global_step >= 1000 and self.args.sampling_strategy =="reading-comprehension":
-            pass
-        elif self.state.global_step >= 1000 and self.args.sampling_strategy =="length-based":
-            pass
-        else:
-            return SubsetRandomSampler(range(0, 1000), generator=generator
-            # return SequentialSampler(self.train_dataset, generator=generator)
-            
-    def get_train_dataloader(self): 
+            and self.args.hub_strategy != HubStrategy.ALL_CHECKPOINTS
+        ):
+            with open(
+                os.path.join(self.args.output_dir, ".gitignore"),
+                "w",
+                encoding="utf-8",
+            ) as writer:
+                writer.writelines(["checkpoint-*/"])
+
+        self.push_in_progress = None
+
+    def get_train_dataloader(self):
+
         train_dataset = self.train_dataset
         data_collator = self.data_collator
 
@@ -67,29 +232,21 @@ class CustomTrainer(Trainer):
         else:
             data_collator = self._get_collator_with_removed_columns(
                 data_collator, description="training"
-            )
+            ) 
 
-        
-        # TODO (Hope): We might also change the sampler we use, to similar to the collator, take 
-        # in an argument that tells it what step of training we are at. Then again, during training
-        # the sampler would have to use this information to inform the next batch of data that 
-        # it returns.
+        # NOTE: this is a one-time ordering of the dataset by the scoring_fn
+        if self.scoring_fn is not None:
+            if self.scoring_fn not in train_dataset.features:
+                raise ValueError(f"scoring_fn {self.scoring_fn} not in dataset features")
+            logger.info(f"Sorting dataset by {self.scoring_fn}")
+            self.dataset = self.train_dataset.sort(self.scoring_fn)
+        elif self.scoring_fn is None and self.pacing_fn is not None:
+            logger.warning("You have specified a pacing function with no scoring function. Curricula will be random.")
         
         train_sampler = self._get_train_sampler()
+        assert isinstance(train_sampler, torch.utils.data.SubsetRandomSampler) 
 
-        # TODO (Hope): Take a look at the on_step_end hook in the trainer class:
-        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer_callback.py#L252
-        # which is called at this point by the trainer here:
-        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer.py#L1866
-
-        # You'll see that it the hook is called as a method of the CallbackHandler class: 
-        # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/trainer_callback.py#L290
-        # But the CallBackHandler is passed a reference to the train_dataloader (i.e. this class)
-        # so from the callbackhandler you should be able to interact directly with any instance
-        # variables of this class, like the current step of training which in turn can be used 
-        # to update the sampler and data collator with smart sampling and masking strategies.
-
-        return DataLoader(
+        return CustomDataLoader(
             train_dataset,
             batch_size=self._train_batch_size,
             sampler=train_sampler,
@@ -97,4 +254,10 @@ class CustomTrainer(Trainer):
             drop_last=self.args.dataloader_drop_last,
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
+            #worker_init_fn=seed_worker,
         )
+
+
+    def training_step(self, *args, **kwargs):
+        print("CALLING TRAINING STEP: ", self.state.global_step)
+        return super().training_step(*args, **kwargs)

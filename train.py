@@ -6,7 +6,6 @@ import textstat
 
 # config-related imports
 import hydra
-
 # training pipeline imports
 from datasets import load_dataset
 from hydra.core.config_store import ConfigStore
@@ -21,9 +20,10 @@ from src.objective import load_objective_collator
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
+from src.trainer import CustomTrainer
 from src.utils.setup import set_seed
 
-# from transformers import Trainer, TrainingArguments
+#from transformers import Trainer, TrainingArguments
 
 
 # type-checks dynamic config file
@@ -130,6 +130,9 @@ def main(cfg: BabyLMConfig):
         eval_dataset=processed_dataset["validation"],
         tokenizer=tokenizer,
         data_collator=objective_collator,
+        scoring_fn=cfg.trainer.scoring_fn,
+        pacing_fn=cfg.trainer.pacing_fn,
+        pacing_fn_kwargs=cfg.trainer.pacing_fn_kwargs,
     )
 
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
