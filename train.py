@@ -101,6 +101,8 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         save_steps=cfg.trainer.max_training_steps
         // 10,  # checkpoint every 10% of training
+        logging_steps=cfg.trainer.max_training_steps
+        // 100,  # log every 1% of training
         run_name=cfg.experiment.name,
         report_to="wandb"
         if not cfg.experiment.dry_run
