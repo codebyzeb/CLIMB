@@ -18,3 +18,17 @@ Before running the code, make sure to run the setup script `./setup.sh`. This sc
 The entry point to the codebase is the `train.py` file. This file expects to receive a hydra-style config file that stores all relevant parameters for the dataset, data processing, tokenization, and model training. [Hydra](https://hydra.cc/docs/tutorials/structured_config/intro/) provides a system for structuring config files in a hierarchical format, for more information.
 
 The `/src` directory stores python modules that customize or override basic parts of the data processing, tokenization and training pipeline. 
+
+## Specifying Curricula
+We implement two methods of curriculum learning: the first revolves around ordering the data according to some difficulty function and continuously increasing the threshold of data avalaible to the model at some rate during the training loop. The second method revoles around changing the model's objective (i.e. masking) function at specified, discrete training steps.
+### Sampling Strategies
+In order to specify a training curriculum, you must pass three arguments to TrainerParams: `scoring_fn`, `pacing_fn`, and `pacing_fn_kwargs`. The scoring (aka difficulty) function should be the name of a feature in your dataset by which you want to order your data. By default, the Trainer will sort data in an ascending fashion, i.e. in increasing difficulty w.r.t this feature. This could be n_gram_perplexity, sentence_length, etc. 
+
+The pacing function is one of `['linear', 'quad', 'root', 'step', 'exp', 'log']` or `None`. This function controls the rate at which the training loop will increase the range of data available to be sampled by the model. The keyword arguments passed in the dictionary `pacing_fn_kwargs` control (1) `start_percent`: the percentage of the dataset which is seen at the first step (2) `num_steps`: the number of steps over which the pacing function will increase the threshold of data, thus defining the curriculum learning region. and (3) `end_percent`: the percentage of the `num_steps` at which to release all of the training data for use in training, regardless of the current threshold set by the pacing function. 
+
+Using the default values as an example, the first 10% of the sorted dataset would be sampled during the first training step, increasing per training step as specified by the pacing function, until the training step is (`end_percent`=0.8 x `num_steps`=10_000) 8_000, where the model now samples the full dataset until the end of training, regardless of the threshold that would have been by the pacing function.
+
+### Masking Strategies
+To use a custom masking strategy, create a new `<strategy_name>.yaml` in the `conf/curriculum` directory (cf. `conf/curriculum/mlm_to_pos.yaml` as a template) and specify the default units as all of the individual objectives. These could be "mlm", "pos", or other custom objectives specified by config files in the `curriculum/units` dir. You must also define a dictionary `steps`, which maps integer training step numbers to the string name of the training objective specified in the default units. Objectives can be reused, e.g. 
+
+```steps: {0: "mlm", 10_000: "pos", 20_000: "mlm"}```, or specified under defaults and not used in the steps dict. 

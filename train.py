@@ -2,7 +2,6 @@
 
 import logging
 import os
-import textstat
 
 # config-related imports
 import hydra
@@ -22,8 +21,6 @@ from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
 from src.utils.setup import set_seed
 
-#from transformers import Trainer, TrainingArguments
-
 
 # type-checks dynamic config file
 cs = ConfigStore.instance()
@@ -35,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
+    
     assert (
         "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
     ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
@@ -74,7 +72,9 @@ def main(cfg: BabyLMConfig):
         remove_columns=["text"],
     )
 
-    objective_collator = load_objective_collator(cfg, tokenizer)
+    objective_collator = load_objective_collator(curriculum=cfg.curriculum, 
+                                                 tokenizer = tokenizer,
+                                                 step=0)
 
     # Setting up wandb
     if cfg.experiment.dry_run:
@@ -125,14 +125,15 @@ def main(cfg: BabyLMConfig):
         experiment_group=cfg.experiment.group,
         experiment_name=cfg.experiment.name,
         model=model,
+        data_collator=objective_collator,
         args=training_args,
         train_dataset=processed_dataset["train"],
         eval_dataset=processed_dataset["validation"],
         tokenizer=tokenizer,
-        data_collator=objective_collator,
         scoring_fn=cfg.trainer.scoring_fn,
         pacing_fn=cfg.trainer.pacing_fn,
         pacing_fn_kwargs=cfg.trainer.pacing_fn_kwargs,
+        curriculum=cfg.curriculum,
     )
 
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)

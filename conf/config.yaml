@@ -4,7 +4,7 @@ defaults:
   - dataset: strict_small 
   - tokenizer: babyberta_tuned
   - model: babyberta_mlm
-  - objective: base_mlm
+  - curriculum: mlm_to_pos
   - data_preprocessing: curriculum_learning
 
 dataset: 
