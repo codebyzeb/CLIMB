@@ -1,51 +1,77 @@
-"""
-Class for defining the training objetive.
-"""
+""" Class for defining the training objetive."""
 
 # typing imports
-import random
-from typing import Dict, List, Tuple, Union
-import torch
-from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizer, DataCollatorForWholeWordMask
 import logging
-from .config import BabyLMConfig
+
+from transformers import (
+    DataCollatorForLanguageModeling,
+    DataCollatorForWholeWordMask,
+    PreTrainedTokenizer,
+)
+
+from .config import ObjectiveCurriculumParams
 
 # TODO: Expand this class to include other objectives, and specifying customs objectives
 logger = logging.getLogger(__name__)
 
 
-def load_objective_collator(curriculum, tokenizer, step: int = 0):
-        """
-        Load the data collator for the training objective. DataCollators need to either be a function
-        or a callable class.
-        """
+def load_objective_collator(
+    curriculum: ObjectiveCurriculumParams,
+    tokenizer: PreTrainedTokenizer,
+    step: int = 0,
+):
+    """
+    Load the data collator for the training objective. DataCollators need to either be a function
+    or a callable class.
 
-        if step in curriculum.steps.keys():
-            name = curriculum.units[curriculum.steps[step]].name
-        else:
-            # if no start step objective specified, assume the mlm objective
-            name = "mlm"
+    Args:
+        curriculum (ObjectiveCurriculumParams): Curriculum config object
+        tokenizer (torch.Tokenizer): The tokenizer used for the model
+        step (int): The current step in the curriculum
+    """
 
-        logger.info(f"Loading objective: {name}")
+    # For any given step, find the highest step in the curriculum that is equal or lower than
+    # the current step
+    curriculum_unit_name = max(
+        [
+            (curr_step, curr_name)
+            for (curr_step, curr_name) in curriculum.steps.items()
+            if step >= curr_step
+        ],
+        key=lambda x: x[0],
+    )[1]
 
-        if name == "mlm":
-            return DataCollatorForLanguageModeling(
-                tokenizer=tokenizer,
-                mlm=True,
-                mlm_probability=curriculum.units[name]["mask_probability"]
-            )
-        elif name == "pos":
-            return CustomDataCollatorForWholeWordMask(
-                tokenizer=tokenizer,
-                mlm=True,
-                mlm_probability=curriculum.units[name]["mask_probability"],
-                curriculum=curriculum,
-                args = curriculum.units[name]
-            )
-        else:
-            raise NotImplementedError(
-                f"Objective {name} is not implemented"
-            )
+    logger.info(
+        f"(Curriculum Learning) Loading objective curriculum unit: {curriculum_unit_name}"
+    )
+
+    if curriculum_unit_name == "mlm":
+        return DataCollatorForLanguageModeling(
+            tokenizer=tokenizer,
+            mlm=True,
+            mlm_probability=curriculum.units[curriculum_unit_name][
+                "mask_probability"
+            ],
+        )
+    elif curriculum_unit_name == "pos":
+        logger.warning(
+            "(Curriculum Learning) POS objective is not implemented yet - using DataCollatorForWholeWordMask instead"
+        )
+        return DataCollatorForWholeWordMask(
+            tokenizer=tokenizer,
+            mlm=True,
+            mlm_probability=curriculum.units[curriculum_unit_name][
+                "mask_probability"
+            ],
+        )
+    else:
+        raise NotImplementedError(
+            f"Objective {curriculum_unit_name} is not implemented"
+        )
+
+
+### TODO @Hope: Implement this class
+
 
 class CustomDataCollatorForWholeWordMask(DataCollatorForWholeWordMask):
     """
@@ -54,13 +80,12 @@ class CustomDataCollatorForWholeWordMask(DataCollatorForWholeWordMask):
     - collates batches of tensors, honoring their tokenizer's pad_token
     - preprocesses batches for masked language modeling
     """
-                 
-    
-    def __init__(self,
-                 curriculum: None,
-                 args: None,
-                **kwargs):
-        raise NotImplementedError("This class is not implemented yet")
+
+    def __init__(self, curriculum: None, args: None, **kwargs):
+        raise NotImplementedError(
+            "CustomDataCollatorForWholeWordMask is not implemented yet"
+        )
+
     #     super().__init__(**kwargs)
     #     self.curriculum = curriculum
     #     self.num_mask_patterns = args.num_mask_patterns
@@ -70,7 +95,6 @@ class CustomDataCollatorForWholeWordMask(DataCollatorForWholeWordMask):
     #     self.leave_unmasked_prob = args.leave_unmasked_prob
     #     self.random_token_prob = args.random_token_prob
     #     self.consecutive_masking = args.consecutive_masking
-   
 
     # def mask_tokens(self, inputs: torch.Tensor, mask_labels: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     #     """
@@ -121,5 +145,3 @@ class CustomDataCollatorForWholeWordMask(DataCollatorForWholeWordMask):
 # https://github.com/huggingface/transformers/blob/ae54e3c3b18bac0832ad62ea9b896dfd52a09850/src/transformers/data/data_collator.py#L78;
 # Given a set of examples that are stored as a list of dictionaries (where each dictionary is a single example),
 # we use that data to create a single batch of data (that is also represented as a dictionary).
-
-
