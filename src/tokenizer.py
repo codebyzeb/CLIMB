@@ -1,3 +1,5 @@
+""" Tokenizer module """
+
 import logging
 import os
 
@@ -13,6 +15,10 @@ logger = logging.getLogger(__name__)
 def load_tokenizer(cfg: BabyLMConfig, dataset: Dataset) -> PreTrainedTokenizer:
     """
     Sets up tokenizer for the model, based on tokenizer configurations
+
+    Args:
+        cfg (BabyLMConfig): hydra config object
+        dataset (Dataset): instantiated dataset object
     """
 
     full_tokenizer_name = cfg.tokenizer.name
