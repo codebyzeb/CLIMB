@@ -5,6 +5,7 @@ import os
 
 # config-related imports
 import hydra
+
 # training pipeline imports
 from datasets import load_dataset
 from hydra.core.config_store import ConfigStore
@@ -15,12 +16,10 @@ from transformers import TrainingArguments
 import wandb
 from src.config import BabyLMConfig
 from src.models import load_model
-from src.objective import load_objective_collator
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
 from src.utils.setup import set_seed
-
 
 # type-checks dynamic config file
 cs = ConfigStore.instance()
@@ -32,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
-    
     assert (
         "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
     ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
@@ -63,7 +61,7 @@ def main(cfg: BabyLMConfig):
 
     # Preprocess data
     logger.info("Preprocessing data")
-    
+
     data_preprocessor = DataPreprocessor(cfg, tokenizer)
     processed_dataset = dataset.map(
         data_preprocessor,
@@ -72,12 +70,9 @@ def main(cfg: BabyLMConfig):
         remove_columns=["text"],
     )
 
-    objective_collator = load_objective_collator(curriculum=cfg.curriculum, 
-                                                 tokenizer = tokenizer,
-                                                 step=0)
-
     # Setting up wandb
     if cfg.experiment.dry_run:
+        os.environ["WANDB_DISABLED"] = "true"
         os.environ["WANDB_MODE"] = "disabled"
     else:
         wandb.config = OmegaConf.to_container(
@@ -89,12 +84,12 @@ def main(cfg: BabyLMConfig):
             entity="baby-lm",
         )
 
-
     # Set up training arguments
     # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
     # initialize the name of the current experiment so that it doesn't interfere with the name
     # of other experiments, and also so that we can store checkpoints of that run on HF hub;
     # alternatively maybe we use ray tune which is natively supported by Trainer
+
     training_args = TrainingArguments(
         output_dir=f"checkpoints/{cfg.experiment.group}/{cfg.experiment.name}",
         overwrite_output_dir=False,
@@ -110,6 +105,7 @@ def main(cfg: BabyLMConfig):
         report_to="wandb"
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
+        save_strategy="no" if cfg.experiment.dry_run else "steps",
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.dry_run,
         hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
@@ -118,22 +114,22 @@ def main(cfg: BabyLMConfig):
         hub_token=os.environ["HF_WRITE_TOKEN"]
         if not cfg.experiment.dry_run
         else None,
+        dataloader_drop_last=cfg.data_curriculum
+        is not None,  # NOTE: This is to ensure that the curriculum is not broken on the last batch
+        remove_unused_columns=False,
     )
 
     # Set up trainer
     trainer = CustomTrainer(
         experiment_group=cfg.experiment.group,
         experiment_name=cfg.experiment.name,
+        objective_curriculum=cfg.objective_curriculum,
+        data_curriculum=cfg.data_curriculum,
         model=model,
-        data_collator=objective_collator,
         args=training_args,
         train_dataset=processed_dataset["train"],
         eval_dataset=processed_dataset["validation"],
         tokenizer=tokenizer,
-        scoring_fn=cfg.trainer.scoring_fn,
-        pacing_fn=cfg.trainer.pacing_fn,
-        pacing_fn_kwargs=cfg.trainer.pacing_fn_kwargs,
-        curriculum=cfg.curriculum,
     )
 
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
