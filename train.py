@@ -123,10 +123,7 @@ def main(cfg: BabyLMConfig):
 
     # Set up trainer
     trainer = CustomTrainer(
-        experiment_group=cfg.experiment.group,
-        experiment_name=cfg.experiment.name,
-        objective_curriculum=cfg.objective_curriculum,
-        data_curriculum=cfg.data_curriculum,
+        hydra_config=cfg,
         model=model,
         args=training_args,
         train_dataset=processed_dataset["train"],
