@@ -12,7 +12,7 @@ from transformers import (
 from .config import ObjectiveCurriculumParams
 
 # TODO: Expand this class to include other objectives, and specifying customs objectives
-logger = logging.getLogger(__name__)
+objective_cl_logger = logging.getLogger("Objective Curriculum")
 
 
 def load_objective_collator(
@@ -41,8 +41,8 @@ def load_objective_collator(
         key=lambda x: x[0],
     )[1]
 
-    logger.info(
-        f"(Curriculum Learning) Loading objective curriculum unit: {curriculum_unit_name}"
+    objective_cl_logger.info(
+        f"Loading objective curriculum unit: {curriculum_unit_name}"
     )
 
     if curriculum_unit_name == "mlm":
@@ -54,8 +54,8 @@ def load_objective_collator(
             ],
         )
     elif curriculum_unit_name == "pos":
-        logger.warning(
-            "(Curriculum Learning) POS objective is not implemented yet - using DataCollatorForWholeWordMask instead"
+        objective_cl_logger.warning(
+            "POS objective is not implemented yet - using DataCollatorForWholeWordMask instead"
         )
         return DataCollatorForWholeWordMask(
             tokenizer=tokenizer,

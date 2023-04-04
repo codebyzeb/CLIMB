@@ -16,6 +16,7 @@ from src.objective import load_objective_collator
 from .config import ObjectiveCurriculumParams
 
 logger = logging.getLogger(__name__)
+objective_cl_logger = logging.getLogger("Objective Curriculum")
 
 
 class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
@@ -59,8 +60,8 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
             self.loader.global_stepnum
             in self.loader.objective_curriculum.steps.keys()
         ):
-            logger.info(
-                f"(Curriculum Learning) Setting curriculum at step: {self.loader.global_stepnum}"
+            objective_cl_logger.info(
+                f"Setting curriculum at step: {self.loader.global_stepnum}"
             )
 
             self._collate_fn = load_objective_collator(
