@@ -1,26 +1,31 @@
 """ Main trainer class for BabyLM. """
 
 import logging
+import os
 import shutil
+import time
 from pathlib import Path
 
 # typing imports
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import torch
 from huggingface_hub import Repository, create_repo
+from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from transformers import Trainer, TrainerCallback
 from transformers.trainer_utils import HubStrategy, has_length
 from transformers.utils import get_full_repo_name
 
-from .config import DataCurriculumParams, ObjectiveCurriculumParams
+from .config import BabyLMConfig
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 
 logger = logging.getLogger(__name__)
+objective_cl_logger = logging.getLogger("Objective Curriculum")
+data_cl_logger = logging.getLogger("Data Curriculum")
 
 
 class CurriculumLearningCallback(TrainerCallback):
@@ -38,10 +43,7 @@ class CurriculumLearningCallback(TrainerCallback):
 class CustomTrainer(Trainer):
     def __init__(
         self,
-        experiment_group: str,
-        experiment_name: str,
-        objective_curriculum: ObjectiveCurriculumParams,
-        data_curriculum: Optional[DataCurriculumParams] = None,
+        hydra_config: BabyLMConfig,
         **kwargs,
     ) -> None:
         """
@@ -51,26 +53,23 @@ class CustomTrainer(Trainer):
         run in, for example, huggingface, wandb ...
 
         Args:
-            * experiment_group (str): Name of the group that the current experiment belongs to
-            * experiment_name (str): Name of the experiment - needs to be set at runtime
-            * objective_curriculum (ObjectiveCurriculumParams): Objective curriculum parameters;
-                we always use an objective curriculum (even if it's just masked language modeling)
-            * data_curriculum (Optional[DataCurriculumParams]): Data curriculum parameters;
-                if None, no data curriculum is used
+            * hydra_config: (BabyLMConfig): The config object.
         """
-        self.experiment_group = experiment_group
-        self.experiment_name = experiment_name
 
-        # relevant for curriculum learning
-        self.objective_curriculum = objective_curriculum
-        self.data_curriculum = data_curriculum
+        self.hydra_config = hydra_config
 
-        logger.info(
-            f"(Curriculum Learning) Using objective curriculum {self.objective_curriculum}"
+        self.experiment_group = hydra_config.experiment.group
+        self.experiment_name = hydra_config.experiment.name
+
+        self.objective_curriculum = hydra_config.objective_curriculum
+        self.data_curriculum = hydra_config.data_curriculum
+
+        objective_cl_logger.info(
+            f"(Using objective curriculum {self.objective_curriculum}"
         )
         if self.data_curriculum:
-            logger.info(
-                f"(Curriculum Learning) Using data curriculum {self.data_curriculum}"
+            data_cl_logger.info(
+                f"Using data curriculum {self.data_curriculum}"
             )
 
         super().__init__(**kwargs)
@@ -230,6 +229,11 @@ class CustomTrainer(Trainer):
                 writer.writelines(["checkpoint-*/"])
 
         self.push_in_progress = None
+
+        config_output_path = os.path.join(
+            self.args.output_dir, f"hydra_config_{time.time()}.yaml"
+        )
+        OmegaConf.save(self.hydra_config, config_output_path)
 
     def _get_train_sampler(self):
         """
