@@ -9,8 +9,9 @@ if [ ! -d "env" ]; then
 	cd lib/evaluation-pipeline
 	unzip filter_data.zip
 	pip install -e ".[dev]"
-	pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113	cd ../..
+	cd ../..
 	pip install -r requirements.txt
+	pip install torch==1.12.0+cu113 torchvision==0.13.0+cu113 torchaudio==0.12.0 --extra-index-url https://download.pytorch.org/whl/cu113
 	pre-commit install
 	huggingface-cli login
 	wandb login
