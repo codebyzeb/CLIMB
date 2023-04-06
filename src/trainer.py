@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 # typing imports
-from typing import List
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -16,12 +16,13 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from transformers import Trainer, TrainerCallback
-from transformers.trainer_utils import HubStrategy, has_length
+from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
 from transformers.utils import get_full_repo_name
 
 from .config import BabyLMConfig
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
+from .evaluator import BlimpEvaluator
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -110,7 +111,7 @@ class CustomTrainer(Trainer):
             rate = (total_data - index_start) / (a * total_step) ** 2
 
             def _quad_function(step):
-                return int(rate * step**2 + index_start)
+                return int(rate * step ** 2 + index_start)
 
             return _quad_function
 
@@ -118,7 +119,7 @@ class CustomTrainer(Trainer):
             rate = (total_data - index_start) / (a * total_step) ** 0.5
 
             def _root_function(step):
-                return int(rate * step**0.5 + index_start)
+                return int(rate * step ** 0.5 + index_start)
 
             return _root_function
 
@@ -374,3 +375,49 @@ class CustomTrainer(Trainer):
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
         )
+
+    def evaluate(
+        self,
+        eval_dataset=None,
+        ignore_keys=None,
+        metric_key_prefix: str = "eval",
+    ) -> Dict[str, float]:
+        """
+        Override the Trainer.evaluate() method to evaluate on BLIMP using the evaluation pipeline submodule.
+
+        Args:
+            eval_dataset (`Dataset`, *optional*):
+                Pass a dataset if you wish to override `self.eval_dataset`. If it is a [`~datasets.Dataset`], columns
+                not accepted by the `model.forward()` method are automatically removed. It must implement the `__len__`
+                method.
+            ignore_keys (`Lst[str]`, *optional*):
+                A list of keys in the output of your model (if it is a dictionary) that should be ignored when
+                gathering predictions.
+            metric_key_prefix (`str`, *optional*, defaults to `"eval"`):
+                An optional prefix to be used as the metrics key prefix. For example the metrics "bleu" will be named
+                "eval_bleu" if the prefix is "eval" (default)
+        Returns:
+            A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
+            dictionary also contains the epoch number which comes from the training state.
+        """
+        # memory metrics - must set up as early as possible
+        self._memory_tracker.start()
+
+        start_time = time.time()
+
+        self.save_model(self.args.output_dir, _internal_call=True)
+        self.save_model(_internal_call=True)
+
+        evaluator = BlimpEvaluator(self.args.output_dir)
+        metrics = evaluator()
+        metrics.update(speed_metrics(metric_key_prefix, start_time))
+
+        logger.info(metrics)
+
+        self.control = self.callback_handler.on_evaluate(
+            self.args, self.state, self.control, metrics
+        )
+
+        self._memory_tracker.stop_and_update_metrics(metrics)
+
+        return metrics
