@@ -92,13 +92,16 @@ def main(cfg: BabyLMConfig):
         output_dir=f"checkpoints/{cfg.experiment.group}/{cfg.experiment.name}",
         overwrite_output_dir=False,
         do_train=True,
-        do_eval=False,
+        do_eval=True,
         do_predict=False,
         per_device_train_batch_size=cfg.trainer.batch_size,  # NOTE: We can should maybe use auto_find_batch_size
         learning_rate=cfg.trainer.lr,
         max_steps=cfg.trainer.max_training_steps,
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
+        evaluation_strategy="steps",
+        eval_steps=cfg.trainer.max_training_steps
+        // 100,  # eval every 1% of training
         save_steps=cfg.trainer.max_training_steps
         // 10,  # checkpoint every 10% of training
         logging_steps=cfg.trainer.max_training_steps
