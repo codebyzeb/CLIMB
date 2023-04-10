@@ -7,7 +7,7 @@ import os
 import hydra
 
 # training pipeline imports
-from datasets import load_dataset
+from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from transformers import TrainingArguments
@@ -46,11 +46,13 @@ def main(cfg: BabyLMConfig):
 
     # Loading dataset
     logger.info("Loading dataset")
-    dataset = load_dataset(
+    dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
         use_auth_token=os.environ["HF_READ_TOKEN"],
-    )
+    )  # type: ignore
+
+    assert isinstance(dataset, DatasetDict), "Dataset is not a DatasetDict"
 
     logger.info("Loading tokenizer")
     tokenizer = load_tokenizer(cfg, dataset)
@@ -107,7 +109,7 @@ def main(cfg: BabyLMConfig):
         logging_steps=cfg.trainer.max_training_steps
         // 100,  # log every 1% of training
         run_name=cfg.experiment.name,
-        report_to="wandb"
+        report_to=["wandb"]
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
         save_strategy="no" if cfg.experiment.dry_run else "steps",
