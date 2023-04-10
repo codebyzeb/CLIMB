@@ -174,3 +174,7 @@ wandb/
 # we don't need all the images in misc 
 misc/default.png
 misc/profile.png
+
+# ignoring additional custom folders
+notebooks/
+clones/
