@@ -1,6 +1,5 @@
 """Class for preprocessing the data, including tokenization, etc."""
 
-import random
 
 # typing imports
 import string
@@ -27,26 +26,10 @@ class DataPreprocessor(object):
 
     ### --- Callback functions --- ###
 
-    # NOTE: These function names must match the names in the data preprocessing callback_functions
-    # list in the config file
+    # NOTE: The function names of callbacks must match the names in the data preprocessing
+    # callback_functions list (sepcified in the config file)
 
-    def n_gram_perplexity(self, texts):
-        """Calculate the perplexity of the input text using n-gram language model.
-
-        Args:
-            texts (list): list of strings to calculate perplexity for
-
-        Returns:
-            list: list of perplexity scores
-        """
-        perplexities = []
-        for text in texts:
-            # Currently just using random value as stand in for perplexity
-            perplexity = random.randint(1, 100)
-            # for i in range(len(text)):
-            #     #perplexity += self.n_gram_model.perplexity(text[:i+1])
-            perplexities.append(perplexity)
-        return perplexities
+    # TODO: Implement more callbacks
 
     ### --- Callback functions --- ###
 
@@ -64,10 +47,13 @@ class DataPreprocessor(object):
                 )
 
         # tokenize the input text
-        return self.tokenizer(
+
+        tokenized_output = self.tokenizer(
             examples["text"],
             padding="max_length",
             truncation=True,
             max_length=self.max_input_length,
             return_special_tokens_mask=True,
         )
+
+        return tokenized_output

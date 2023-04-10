@@ -1,2 +1,0 @@
-callback_functions: 
-  - "n_gram_perplexity"
