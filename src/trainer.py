@@ -5,24 +5,28 @@ import os
 import shutil
 import time
 from pathlib import Path
+from typing import List, Optional
 
-# typing imports
-from typing import Dict, List, Optional
-
-import numpy as np
 import torch
-from huggingface_hub import Repository, create_repo
-from omegaconf import OmegaConf
+from huggingface_hub.hf_api import create_repo
+from huggingface_hub.repository import Repository
+
+# Data loading
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+
+# Model Training
 from transformers import Trainer, TrainerCallback
 from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
 from transformers.utils import get_full_repo_name
 
-from .config import BabyLMConfig
+# typing imports
+from .config import DataCurriculumParams, ObjectiveCurriculumParams
+
+# Data Sampling
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
-from .evaluator import BlimpEvaluator
+from .pacing_fn import get_pacing_fn
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -35,7 +39,7 @@ class CurriculumLearningCallback(TrainerCallback):
     """
 
     def on_step_end(
-        self, args, state, control, train_dataloader=None, **kwargs
+        self, args, state, control, train_dataloader, **kwargs
     ) -> None:
         train_dataloader.global_stepnum += 1
         train_dataloader.sampler.global_stepnum += 1
@@ -76,91 +80,6 @@ class CustomTrainer(Trainer):
         super().__init__(**kwargs)
         self.add_callback(CurriculumLearningCallback())
 
-    def get_pacing_fn(self) -> callable:
-        """
-        Modified from: https://github.com/google-research/understanding-curricula/blob/main/utils/utils.py
-
-        Returns:
-            * (callable): A function that takes in the current step and returns the number of
-                data points to use.
-        """
-
-        if not self.data_curriculum:
-            return None
-
-        # a:  percentage of total step when reaching to the full data.
-        a = self.data_curriculum.pacing_fn_kwargs.end_percent
-        # b:  percentatge of total data at the begining of the training.
-        b = self.data_curriculum.pacing_fn_kwargs.start_percent
-
-        total_step = self.data_curriculum.pacing_fn_kwargs.num_steps
-
-        total_data = len(self.train_dataset)
-        pacing_fn = self.data_curriculum.pacing_fn
-
-        index_start = b * total_data
-        if pacing_fn == "linear":
-            rate = (total_data - index_start) / (a * total_step)
-
-            def _linear_function(step):
-                return int(rate * step + index_start)
-
-            return _linear_function
-
-        elif pacing_fn == "quad":
-            rate = (total_data - index_start) / (a * total_step) ** 2
-
-            def _quad_function(step):
-                return int(rate * step ** 2 + index_start)
-
-            return _quad_function
-
-        elif pacing_fn == "root":
-            rate = (total_data - index_start) / (a * total_step) ** 0.5
-
-            def _root_function(step):
-                return int(rate * step ** 0.5 + index_start)
-
-            return _root_function
-
-        elif pacing_fn == "step":
-            threshold = a * total_step
-
-            def _step_function(step):
-                return int(total_data * (step // threshold) + index_start)
-
-            return _step_function
-
-        elif pacing_fn == "exp":
-            c = 10
-            tilde_b = index_start
-            tilde_a = a * total_step
-            rate = (total_data - tilde_b) / (np.exp(c) - 1)
-            constant = c / tilde_a
-
-            def _exp_function(step):
-                if not np.isinf(np.exp(step * constant)):
-                    return int(rate * (np.exp(step * constant) - 1) + tilde_b)
-                else:
-                    return total_data
-
-            return _exp_function
-
-        elif pacing_fn == "log":
-            c = 10
-            tilde_b = index_start
-            tilde_a = a * total_step
-            ec = np.exp(-c)
-            N_b = total_data - tilde_b
-
-            def _log_function(step):
-                return int(
-                    N_b * (1 + (1.0 / c) * np.log(step / tilde_a + ec))
-                    + tilde_b
-                )
-
-            return _log_function
-
     def init_git_repo(self, at_init: bool = False) -> None:
         """
         Initializes a git repo in `self.args.hub_model_id`.
@@ -188,6 +107,9 @@ class CustomTrainer(Trainer):
             private=self.args.hub_private_repo,
             exist_ok=True,
         )
+
+        assert self.args.hub_token is not None
+
         try:
             self.repo = Repository(
                 self.args.output_dir,
@@ -263,7 +185,14 @@ class CustomTrainer(Trainer):
         )
 
         if self.data_curriculum:
-            pacing_fn = self.get_pacing_fn()
+            # A data-driven curriculum assumes we are using a difficulty scorer along with a
+            # curriculum pacing function to determine the order in which we sample data.
+
+            pacing_fn = get_pacing_fn(
+                self.data_curriculum.pacing_function_name,
+                self.args.max_steps,
+                **self.data_curriculum.pacing_function_kwargs,
+            )
 
             if self.args.world_size <= 1:
                 return CurriculumSampler(
@@ -287,7 +216,7 @@ class CustomTrainer(Trainer):
         else:
             # We are not using a data-driven curriculum, so we can use the default sampler.
             if self.args.world_size <= 1:
-                return RandomSampler(self.train_dataset, generator=generator)
+                return RandomSampler(self.train_dataset, generator=generator)  # type: ignore
             else:
                 return DistributedSampler(
                     self.train_dataset,
@@ -309,6 +238,8 @@ class CustomTrainer(Trainer):
         """
         self._set_signature_columns_if_needed()
         signature_columns = self._signature_columns
+        if signature_columns is None:
+            signature_columns = []
         ignore_columns = list(
             set(dataset.column_names) - set(signature_columns)
         )
@@ -330,38 +261,16 @@ class CustomTrainer(Trainer):
         # training, we don't want to do that here since those columns might be used for
         # curriculum learning/pacing.
 
-        if self.data_curriculum:
-            # NOTE: this is a one-time ordering of the dataset by the scoring_fn, if we are using
-            # a data-driven curriculum. If we are not using a data-driven curriculum, we just
-            # leave the dataset as is (we might possibly shuffle it in the sampler)
-            if self.data_curriculum.scoring_fn is not None:
-                if (
-                    self.data_curriculum.scoring_fn
-                    not in train_dataset.features
-                ):
-                    raise ValueError(
-                        f"scoring_fn {self.data_curriculum.scoring_fn} not in dataset features"
-                    )
-                logger.info(
-                    f"Sorting dataset by {self.data_curriculum.scoring_fn}"
-                )
-                train_dataset = train_dataset.sort(
-                    self.data_curriculum.scoring_fn
-                )
-            elif (
-                self.data_curriculum.scoring_fn is None
-                and self.pacing_fn is not None
-            ):
-                logger.warning(
-                    "You have specified a pacing function with no scoring function. Curricula will be random."
-                )
-
         train_sampler = self._get_train_sampler()
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these
         # ignore columns to the dataloader so that they are not included in the batch.
         ignore_columns = self._get_ignore_columns(train_dataset)
+
+        assert (
+            self.tokenizer is not None
+        ), "Tokenizer is not set. Please set the tokenizer before calling the train method."
 
         return CurriculumDataLoader(
             global_stepnum=self.state.global_step,
