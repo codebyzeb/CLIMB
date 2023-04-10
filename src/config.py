@@ -102,9 +102,15 @@ class ObjectiveCurriculumParams(DictConfig):
 ## Data-driven curriculum learning parameters ##
 @dataclass
 class PacingFunctionParams(DictConfig):
-    end_percent: float
+    # Num of steps to take (in percent) before beginning the curriculum
     start_percent: float
-    num_steps: int
+    # Num of steps to take (in percent) before ending the curriculum
+    end_percent: float
+    # Difficulty (percentile of the data) to start at
+    starting_difficulty: float
+    # Max difficulty (percentile of the data) to end at; 1.0 means include all data at the
+    # end of the curriculum
+    max_difficulty: Optional[float] = 1.0
 
 
 @dataclass
@@ -112,10 +118,10 @@ class DataCurriculumParams(DictConfig):
     # data-driven curriculum learning parameters
 
     # the column of the data to sort by (aka n_gram perplexity, sentence length, etc.)
-    scoring_fn: str
+    difficulty_scorer_name: str
 
     # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
-    pacing_fn: str
+    pacing_fn_name: str
 
     pacing_fn_kwargs: PacingFunctionParams
 
