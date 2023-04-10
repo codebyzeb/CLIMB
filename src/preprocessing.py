@@ -5,13 +5,13 @@ import random
 # typing imports
 import string
 
-from transformers import PreTrainedTokenizer
+from transformers import PreTrainedTokenizerFast
 
 from .config import BabyLMConfig
 
 
 class DataPreprocessor(object):
-    def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizer):
+    def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
         """
         Args:
             cfg (BabyLMConfig): hydra config object
@@ -57,10 +57,11 @@ class DataPreprocessor(object):
                 for line in examples["text"]
             ]
 
-        for callback_function in self.callback_functions:
-            examples[callback_function] = getattr(self, callback_function)(
-                examples["text"]
-            )
+        if self.callback_functions:
+            for callback_function in self.callback_functions:
+                examples[callback_function] = getattr(self, callback_function)(
+                    examples["text"]
+                )
 
         # tokenize the input text
         return self.tokenizer(

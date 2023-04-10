@@ -3,11 +3,11 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from omegaconf import MISSING
+from omegaconf import MISSING, DictConfig
 
 
 @dataclass
-class ExperimentParams:
+class ExperimentParams(DictConfig):
     seed: int
 
     # Name of the experiment - needs to be set at runtime
@@ -22,7 +22,7 @@ class ExperimentParams:
 
 
 @dataclass
-class DatasetParams:
+class DatasetParams(DictConfig):
     # name of the dataset on huggingface
     name: str
     # subconfig i.e. strict-small
@@ -30,7 +30,7 @@ class DatasetParams:
 
 
 @dataclass
-class TokenizerParams:
+class TokenizerParams(DictConfig):
     # data processing parameters
     name: str
     vocab_size: int
@@ -40,7 +40,7 @@ class TokenizerParams:
 
 
 @dataclass
-class DataPreprocessingParams:
+class DataPreprocessingParams(DictConfig):
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
     max_input_length: int
@@ -48,7 +48,7 @@ class DataPreprocessingParams:
 
 
 @dataclass
-class ModelParams:
+class ModelParams(DictConfig):
     # model parameters
     name: str
 
@@ -63,7 +63,7 @@ class ModelParams:
 
 
 @dataclass
-class TrainerParams:
+class TrainerParams(DictConfig):
     batch_size: int
     lr: float
     num_warmup_steps: int
@@ -75,7 +75,7 @@ class TrainerParams:
 
 ## bjective curriculum learning parameters ##
 @dataclass
-class ObjectiveCurriculumUnitParams:
+class ObjectiveCurriculumUnitParams(DictConfig):
     # any curriculum requires the following parameters
     name: str
     mask_probability: float
@@ -92,7 +92,7 @@ class ObjectiveCurriculumUnitParams:
 
 
 @dataclass
-class ObjectiveCurriculumParams:
+class ObjectiveCurriculumParams(DictConfig):
     # objective curriculum learning parameters
 
     units: Dict[str, ObjectiveCurriculumUnitParams]
@@ -101,14 +101,14 @@ class ObjectiveCurriculumParams:
 
 ## Data-driven curriculum learning parameters ##
 @dataclass
-class PacingFunctionParams:
+class PacingFunctionParams(DictConfig):
     end_percent: float
     start_percent: float
     num_steps: int
 
 
 @dataclass
-class DataCurriculumParams:
+class DataCurriculumParams(DictConfig):
     # data-driven curriculum learning parameters
 
     # the column of the data to sort by (aka n_gram perplexity, sentence length, etc.)
@@ -124,7 +124,7 @@ class DataCurriculumParams:
 
 
 @dataclass
-class BabyLMConfig:
+class BabyLMConfig(DictConfig):
     experiment: ExperimentParams
     dataset: DatasetParams
     tokenizer: TokenizerParams
