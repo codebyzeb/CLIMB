@@ -1,4 +1,4 @@
-from .base_scorer import BaseDifficultyScorer
+from .base_difficulty_scorer import BaseDifficultyScorer
 from .ngram_perplexity import NGramPerplexityScorer
 
 
