@@ -6,7 +6,7 @@ import logging
 from transformers import (
     DataCollatorForLanguageModeling,
     DataCollatorForWholeWordMask,
-    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
 )
 
 from .config import ObjectiveCurriculumParams
@@ -17,7 +17,7 @@ objective_cl_logger = logging.getLogger("Objective Curriculum")
 
 def load_objective_collator(
     curriculum: ObjectiveCurriculumParams,
-    tokenizer: PreTrainedTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     step: int = 0,
 ):
     """

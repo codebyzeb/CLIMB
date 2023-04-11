@@ -17,26 +17,26 @@ from transformers import (
 
 
 @register_model("roberta_for_causal_lm", RobertaConfig)
-class RobertaForCausalLM(RobertaForCausalLM):
+class DefaultRobertaForCausalLM(RobertaForCausalLM):
     pass
 
 
 @register_model("roberta_for_masked_lm", RobertaConfig)
-class RobertaForMaskedLM(RobertaForMaskedLM):
+class DefaultRobertaForMaskedLM(RobertaForMaskedLM):
     pass
 
 
 @register_model(
     "roberta_pre_layer_norm_for_causal_lm", RobertaPreLayerNormConfig
 )
-class RobertaPreLayerNormForCausalLM(RobertaPreLayerNormForCausalLM):
+class DefaultRobertaPreLayerNormForCausalLM(RobertaPreLayerNormForCausalLM):
     pass
 
 
 @register_model(
     "roberta_pre_layer_norm_for_masked_lm", RobertaPreLayerNormConfig
 )
-class RobertaPreLayerNormForMaskedLM(RobertaPreLayerNormForMaskedLM):
+class DefaultRobertaPreLayerNormForMaskedLM(RobertaPreLayerNormForMaskedLM):
     pass
 
 

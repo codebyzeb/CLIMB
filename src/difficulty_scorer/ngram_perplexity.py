@@ -11,7 +11,7 @@ from datasets import Dataset
 from nltk.lm import MLE
 from nltk.lm.preprocessing import padded_everygram_pipeline
 
-from .base_scorer import BaseDifficultyScorer
+from .base_difficulty_scorer import BaseDifficultyScorer
 
 # NLTK Package provides functionality for n-gram models
 

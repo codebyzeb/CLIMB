@@ -1,14 +1,11 @@
 """ Module for custom data samplers. """
 
 import logging
-from typing import Callable, Iterator, Sized
-
-import torch
+from typing import Callable, Iterator, Protocol, Sequence, Union
 
 # typing imports
-from datasets import Dataset
 from torch import Generator
-from torch.utils.data import Sampler
+from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
 logger = logging.getLogger(__name__)
@@ -37,13 +34,35 @@ logger = logging.getLogger(__name__)
 #         return self.num_samples
 
 
+class CurriculumIterTypeProtocol(Protocol):
+    @property
+    def generator(self) -> Union[Generator, None]:
+        ...
+
+    @property
+    def global_stepnum(self) -> int:
+        ...
+
+    @property
+    def batch_size(self) -> int:
+        ...
+
+    @property
+    def indices(self) -> Sequence[int]:
+        ...
+
+    @property
+    def pacing_fn(self) -> Callable:
+        ...
+
+
 class CurriculumIterMixin:
     """
     Mixin class for functionality that is shared between the CurriculumSampler and the
     DistributedCurriculumSampler.
     """
 
-    def _curriculum_iter(self):
+    def _curriculum_iter(self: CurriculumIterTypeProtocol):
         """
         Returns an iterator for data-driven curriculum learning that continuously generates
         samples of indices. Each batch of indices is aware of the current global_stepnum and
@@ -51,18 +70,16 @@ class CurriculumIterMixin:
         """
 
         while (self.global_stepnum + 1) * self.batch_size < len(self.indices):
-            upper_limit = self.pacing_fn(self.global_stepnum)
+            self.pacing_fn(self.global_stepnum)
 
-            # NOTE (richard): torch.randperm is fast compared to np.random.choice, although it
-            # does require more memory (maybe?), since our dataset is small this is fine (hopefully)
-
-            for i in torch.randperm(
-                len(self.indices[:upper_limit]), generator=self.generator
-            )[: self.batch_size]:
-                assert (
-                    i < upper_limit
-                ), f"(CustomSubsetSampler) Sampled index {i} is greater than upper limit: {upper_limit}"
-                yield self.indices[i]
+            yield 0
+            # for i in torch.randperm(
+            #     len(self.indices[:upper_limit]), generator=self.generator
+            # )[: self.batch_size]:
+            #     assert (
+            #         i < upper_limit
+            #     ), f"(CustomSubsetSampler) Sampled index {i} is greater than upper limit: {upper_limit}"
+            #     yield self.indices[i]
 
 
 class CurriculumSampler(CurriculumIterMixin, Sampler):
@@ -72,10 +89,10 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
 
     def __init__(
         self,
-        data_source: Sized,
+        data_source: Dataset,
         pacing_fn: Callable,
         batch_size: int,
-        generator: Generator = None,
+        generator: Union[Generator, None] = None,
         global_stepnum: int = 0,
     ) -> None:
         """
@@ -89,7 +106,8 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
         """
 
         self.data_source = data_source
-        self.indices = list(range(len(data_source)))
+
+        self.indices: Sequence[int] = list(range(len(data_source)))  # type: ignore[arg-type]
 
         self.pacing_fn = pacing_fn
         self.batch_size = batch_size
@@ -115,7 +133,7 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
         dataset: Dataset,
         pacing_fn: Callable,
         batch_size: int,
-        generator: Generator = None,
+        generator: Union[Generator, None] = None,
         global_stepnum: int = 0,
         **kwargs,
     ) -> None:
