@@ -26,6 +26,7 @@ from .config import DataCurriculumParams, ObjectiveCurriculumParams
 # Data Sampling
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
+from .difficulty_scorer import get_difficulty_scorer
 from .pacing_fn import get_pacing_fn
 
 logger = logging.getLogger(__name__)
@@ -194,9 +195,16 @@ class CustomTrainer(Trainer):
                 **self.data_curriculum.pacing_function_kwargs,
             )
 
+            difficulty_scorer = get_difficulty_scorer(
+                self.data_curriculum.difficulty_scorer_name,
+                self.data_curriculum.difficulty_scorer_kwargs,
+            )
+            # TODO: pass in additional arguments to the difficulty scorer
+
             if self.args.world_size <= 1:
                 return CurriculumSampler(
                     self.train_dataset,
+                    difficulty_scorer=difficulty_scorer,
                     pacing_fn=pacing_fn,
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
@@ -205,6 +213,7 @@ class CustomTrainer(Trainer):
             else:
                 return DistributedCurriculumSampler(
                     self.train_dataset,
+                    difficulty_scorer=difficulty_scorer,
                     pacing_fn=pacing_fn,
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
