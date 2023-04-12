@@ -4,34 +4,14 @@ import logging
 from typing import Callable, Iterator, Protocol, Sequence, Union
 
 # typing imports
+import torch
 from torch import Generator
 from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
 
+from .difficulty_scorer import BaseDifficultyScorer
+
 logger = logging.getLogger(__name__)
-
-# (TODO) Flesh out implementation for this
-# this will be used for self-paced training
-# class CustomWeightedSampler(WeightedRandomSampler):
-#     """
-#     A custom sampler that samples a subset of the dataset.
-#     """
-#     def __init__(self, weights, num_samples, replacement=True, generator=None) -> None:
-
-#         raise NotImplementedError("Implementation of CustomWeightedSampler is TBD.")
-
-#         self.weights = weights
-#         self.num_samples = num_samples
-#         self.replacement = replacement
-#         self.generator = generator
-
-#     def __iter__(self) -> Iterator[int]:
-#         # this iter function is called by the dataloader
-#         # and will depend on the output of the pacing function
-#         return (self.weights > torch.rand(self.num_samples)).nonzero().flatten()
-
-#     def __len__(self) -> int:
-#         return self.num_samples
 
 
 class CurriculumIterTypeProtocol(Protocol):
@@ -52,7 +32,15 @@ class CurriculumIterTypeProtocol(Protocol):
         ...
 
     @property
-    def pacing_fn(self) -> Callable:
+    def pacing_fn(self) -> Callable[..., float]:
+        ...
+
+    @property
+    def difficulty_scorer(self) -> BaseDifficultyScorer:
+        ...
+
+    @property
+    def dataset(self) -> Dataset:
         ...
 
 
@@ -70,16 +58,23 @@ class CurriculumIterMixin:
         """
 
         while (self.global_stepnum + 1) * self.batch_size < len(self.indices):
-            self.pacing_fn(self.global_stepnum)
+            max_difficulty_percentile: float = self.pacing_fn(
+                self.global_stepnum
+            )
 
-            yield 0
-            # for i in torch.randperm(
-            #     len(self.indices[:upper_limit]), generator=self.generator
-            # )[: self.batch_size]:
-            #     assert (
-            #         i < upper_limit
-            #     ), f"(CustomSubsetSampler) Sampled index {i} is greater than upper limit: {upper_limit}"
-            #     yield self.indices[i]
+            difficulty_scores = self.difficulty_scorer.score_difficulty(
+                self.dataset,
+                self.indices,
+                self.global_stepnum,
+                max_difficulty_percentile,
+            )
+
+            difficulty_scores_tensor = torch.tensor(difficulty_scores)
+
+            for i in torch.multinomial(
+                difficulty_scores_tensor, self.batch_size, replacement=False
+            ):
+                yield self.indices[i]
 
 
 class CurriculumSampler(CurriculumIterMixin, Sampler):
@@ -89,15 +84,18 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
 
     def __init__(
         self,
-        data_source: Dataset,
-        pacing_fn: Callable,
+        dataset: Dataset,
+        difficulty_scorer: BaseDifficultyScorer,
+        pacing_fn: Callable[[int], float],
         batch_size: int,
         generator: Union[Generator, None] = None,
         global_stepnum: int = 0,
     ) -> None:
         """
         Args:
-            * data_source: the dataset to sample from
+            * dataset: the dataset to sample from
+            * difficulty_scorer: the difficulty scorer to use for curriculum learning; scores
+                the difficulty of the dataset and returns a list of scores
             * pacing_fn: a function that takes in the global stepnum and returns the upper limit
                 of the index that we can sample to from the dataset
             * batch_size: the batch size
@@ -105,10 +103,11 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
             * global_stepnum: the global stepnum of the training loop
         """
 
-        self.data_source = data_source
+        self.dataset = dataset
 
-        self.indices: Sequence[int] = list(range(len(data_source)))  # type: ignore[arg-type]
+        self.indices: Sequence[int] = list(range(len(dataset)))  # type: ignore[arg-type]
 
+        self.difficulty_scorer = difficulty_scorer
         self.pacing_fn = pacing_fn
         self.batch_size = batch_size
         self.generator = generator
@@ -131,7 +130,8 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
     def __init__(
         self,
         dataset: Dataset,
-        pacing_fn: Callable,
+        difficulty_scorer: BaseDifficultyScorer,
+        pacing_fn: Callable[[int], float],
         batch_size: int,
         generator: Union[Generator, None] = None,
         global_stepnum: int = 0,
@@ -140,6 +140,8 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
         """
         Args:
             * dataset: the dataset to sample from
+            * difficulty_scorer: the difficulty scorer to use for curriculum learning; scores
+                the difficulty of the dataset and returns a list of scores
             * pacing_fn: a function that takes in the global stepnum and returns the upper limit
                 of the index that we can sample to from the dataset
             * batch_size: the batch size
@@ -153,6 +155,7 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
         kwargs["shuffle"] = False
         super().__init__(dataset, **kwargs)
 
+        self.difficulty_scorer = difficulty_scorer
         self.pacing_fn = pacing_fn
         self.batch_size = batch_size
         self.generator = generator
@@ -170,5 +173,5 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
         ]
         assert len(self.indices) == self.num_samples
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[int]:
         yield from self._curriculum_iter()
