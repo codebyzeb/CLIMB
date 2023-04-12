@@ -1,4 +1,5 @@
   difficulty_scorer_name: "ngram_perplexity"
+  difficulty_scorer_kwargs: {"n_gram": 3}
   pacing_fn_name: "linear"
   pacing_fn_kwargs: {"start_percent": 0.1,
                     "end_percent": 0.8,

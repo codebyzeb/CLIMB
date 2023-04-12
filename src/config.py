@@ -113,12 +113,21 @@ class PacingFunctionParams(DictConfig):
     max_difficulty: Optional[float] = 1.0
 
 
+# Difficulty Scorer Parameters
+@dataclass
+class NGramPerplexityDifficultyScorerParams(DictConfig):
+    # n-gram perplexity parameters
+    n_gram: int
+
+
 @dataclass
 class DataCurriculumParams(DictConfig):
     # data-driven curriculum learning parameters
 
     # the column of the data to sort by (aka n_gram perplexity, sentence length, etc.)
     difficulty_scorer_name: str
+
+    difficulty_scorer_kwargs: NGramPerplexityDifficultyScorerParams
 
     # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
     pacing_fn_name: str
