@@ -1,7 +1,7 @@
 """Defines the set of hyperparameters to be specified in the config file."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from omegaconf import MISSING, DictConfig
 
@@ -120,6 +120,9 @@ class NGramPerplexityDifficultyScorerParams(DictConfig):
     n_gram: int
 
 
+DifficultyScorerKwargsType = Union[NGramPerplexityDifficultyScorerParams, None]
+
+
 @dataclass
 class DataCurriculumParams(DictConfig):
     # data-driven curriculum learning parameters
@@ -127,7 +130,7 @@ class DataCurriculumParams(DictConfig):
     # the column of the data to sort by (aka n_gram perplexity, sentence length, etc.)
     difficulty_scorer_name: str
 
-    difficulty_scorer_kwargs: NGramPerplexityDifficultyScorerParams
+    difficulty_scorer_kwargs: DifficultyScorerKwargsType
 
     # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
     pacing_fn_name: str
