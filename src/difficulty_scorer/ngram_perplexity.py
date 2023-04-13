@@ -24,7 +24,7 @@ logger = logging.getLogger("DifficultyScorer")
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(BaseDifficultyScorer):
-    def __init__(self, n_gram: int, tokenizer: PreTrainedTokenizerFast):
+    def __init__(self, n_gram: int):
         """
         Initializes the n-gram perplexity scorer.
 
@@ -36,7 +36,15 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
 
         self.n_gram = n_gram
 
-        self.tokenizer = tokenizer
+        self._tokenizer: PreTrainedTokenizerFast
+
+    @property
+    def tokenizer(self) -> PreTrainedTokenizerFast:
+        return self._tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
+        self._tokenizer = tokenizer
 
     def _train_model(self, dataset: Dataset):
         """
