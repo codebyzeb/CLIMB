@@ -198,8 +198,8 @@ class CustomTrainer(Trainer):
             difficulty_scorer = get_difficulty_scorer(
                 self.data_curriculum.difficulty_scorer_name,
                 self.data_curriculum.difficulty_scorer_kwargs,
+                trainer=self,
             )
-            # TODO: pass in additional arguments to the difficulty scorer
 
             if self.args.world_size <= 1:
                 return CurriculumSampler(
