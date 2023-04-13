@@ -101,7 +101,7 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         evaluation_strategy="steps",
         eval_steps=cfg.trainer.max_training_steps
-        // 100,  # eval every 1% of training
+        // 10,  # eval every 10% of training
         save_steps=cfg.trainer.max_training_steps
         // 10,  # checkpoint every 10% of training
         logging_steps=cfg.trainer.max_training_steps

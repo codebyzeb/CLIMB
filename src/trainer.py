@@ -410,6 +410,10 @@ class CustomTrainer(Trainer):
 
         evaluator = BlimpEvaluator(self.args.output_dir)
         metrics = evaluator()
+        # Prefix all keys with metric_key_prefix + '_'
+        for key in list(metrics.keys()):
+            if not key.startswith(f"{metric_key_prefix}_"):
+                metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
         metrics.update(speed_metrics(metric_key_prefix, start_time))
 
         logger.info(metrics)
@@ -419,5 +423,7 @@ class CustomTrainer(Trainer):
         )
 
         self._memory_tracker.stop_and_update_metrics(metrics)
+
+        self.log(metrics)
 
         return metrics
