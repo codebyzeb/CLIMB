@@ -49,8 +49,8 @@ def load_tokenizer(
         logger.info("Loading in tokenizer from third-party org")
         logger.info("Retraining tokenizer on training dataset")
 
-        tokenizer.train_new_from_iterator(
-            dataset["train"], vocab_size=cfg.tokenizer.vocab_size
+        tokenizer = tokenizer.train_new_from_iterator(
+            dataset["train"]["text"], vocab_size=cfg.tokenizer.vocab_size
         )
 
         new_tokenizer_name = f"CamBabyTrainers/{tokenizer_name}-{cfg.tokenizer.vocab_size}-tokenizer"
