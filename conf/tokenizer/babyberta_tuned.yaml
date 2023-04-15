@@ -1,2 +1,5 @@
-name: 'CamBabyTrainers/BabyBERTa-1-75000-tokenizer'  # larger than 8k slightly reduces performance
-vocab_size: 75000
+name: 'CamBabyTrainers/BabyBERTa-3-8192-tokenizer'  # larger than 8k slightly reduces performance
+vocab_size: 8192
+
+# optional kwargs that are passed into the tokenizer loading function
+add_prefix_space: True  # better if True, whether to treat first token like any other token (False in GPT-2)
