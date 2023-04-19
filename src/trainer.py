@@ -187,12 +187,12 @@ class CustomTrainer(Trainer):
 
         if self.data_curriculum:
             # A data-driven curriculum assumes we are using a difficulty scorer along with a
-            # curriculum pacing function to determine the order in which we sample data.
+            # curriculum pacing function to determine the order in whiaruch we sample data.
 
             pacing_fn = get_pacing_fn(
-                self.data_curriculum.pacing_function_name,
+                self.data_curriculum.pacing_fn_name,
                 self.args.max_steps,
-                **self.data_curriculum.pacing_function_kwargs,
+                **self.data_curriculum.pacing_fn_kwargs,
             )
 
             difficulty_scorer = get_difficulty_scorer(
@@ -264,13 +264,15 @@ class CustomTrainer(Trainer):
                 Dataloader.
         """
 
-        train_dataset = self.train_dataset
+        assert self.train_dataset is not None
 
         # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
-        # training, we don't want to do that here since those columns might be used for
-        # curriculum learning/pacing.
+        # training, we only remove the text column here. We will remove the other columns in a
+        # postprocessing step (after the objective function collation).
 
         train_sampler = self._get_train_sampler()
+
+        train_dataset = self.train_dataset.remove_columns("text")  # type: ignore
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these

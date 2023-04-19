@@ -1,6 +1,6 @@
 from typing import Mapping, Type, TypeVar
 
-from base_difficulty_scorer import BaseDifficultyScorer
+from .base_difficulty_scorer import BaseDifficultyScorer
 
 T = TypeVar("T", bound=BaseDifficultyScorer)
 

@@ -69,7 +69,6 @@ def main(cfg: BabyLMConfig):
         data_preprocessor,
         batched=True,
         num_proc=64,
-        remove_columns=["text"],
     )
 
     # Setting up wandb
