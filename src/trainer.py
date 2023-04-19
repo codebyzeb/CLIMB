@@ -5,11 +5,12 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List
 
 import torch
 from huggingface_hub.hf_api import create_repo
 from huggingface_hub.repository import Repository
+from omegaconf import OmegaConf
 
 # Data loading
 from torch.utils.data import DataLoader, RandomSampler
@@ -21,12 +22,15 @@ from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
 from transformers.utils import get_full_repo_name
 
 # typing imports
-from .config import DataCurriculumParams, ObjectiveCurriculumParams
+from .config import BabyLMConfig
 
 # Data Sampling
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 from .difficulty_scorer import get_difficulty_scorer
+
+# Model Evaluation
+from .evaluator import BlimpEvaluator
 from .pacing_fn import get_pacing_fn
 
 logger = logging.getLogger(__name__)
