@@ -124,17 +124,21 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
                 for sent in self.tokenized_text
             )
 
-            next_idx = indices[0]
+            # indices is a list of indices that we want to score the difficulty of
+            # (if we are using distributed training, not all indices will be scored - only thos e
+            # assigned to the current process)
+            curr_indices_idx = 0
 
             logger.info("Evaluating perplexity of n-grams")
 
             for _idx, n_gram in enumerate(data_n_grams):
-                if _idx == next_idx:
+                if _idx == indices[curr_indices_idx]:
                     difficulty_scores.append(self.lm.perplexity(n_gram))
-                    indices.pop(0)
-                    if len(indices) == 0:
+
+                    curr_indices_idx += 1
+
+                    if curr_indices_idx == len(indices):
                         break
-                    next_idx = indices[0]
 
             # convert difficulty scores to percentiles
             max_difficulty = float(

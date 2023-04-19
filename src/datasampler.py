@@ -59,7 +59,7 @@ class CurriculumIterMixin:
         will re-compute the current upper-limit index that can be sampled from.
         """
 
-        while (self.global_stepnum + 1) * self.batch_size < len(self.indices):
+        while True:
             max_difficulty_percentile: float = self.pacing_fn(
                 self.global_stepnum
             )
@@ -72,8 +72,6 @@ class CurriculumIterMixin:
             )
 
             difficulty_scores_tensor = torch.tensor(difficulty_scores)
-
-            # NOTE: the problem is that we still have 'text' in the dataste
 
             for i in torch.multinomial(
                 difficulty_scores_tensor, self.batch_size, replacement=False
@@ -120,10 +118,9 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
     def __iter__(self) -> Iterator[int]:
         yield from self._curriculum_iter()
 
-    def __len__(self) -> int:
-        # NOTE: this does not update with the pacing_fn
-        # always returns a static length
-        return len(self.indices)
+    def __len__(self):
+        # NOTE: CurriculumSampler dooes not have a concept of epoch 'length'
+        return None
 
 
 class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
@@ -179,3 +176,7 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
 
     def __iter__(self) -> Iterator[int]:
         yield from self._curriculum_iter()
+
+    def __len__(self):
+        # NOTE: CurriculumSampler dooes not have a concept of epoch 'length'
+        return None
