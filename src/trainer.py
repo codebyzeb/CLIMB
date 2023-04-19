@@ -280,7 +280,8 @@ class CustomTrainer(Trainer):
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these
-        # ignore columns to the dataloader so that they are not included in the batch.
+        # ignore columns to the dataloader so that they are not included in the batch, but we
+        # might want to use this information when generating the objective.
         ignore_columns = self._get_ignore_columns(train_dataset)
 
         assert (
