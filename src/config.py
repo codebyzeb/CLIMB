@@ -1,7 +1,7 @@
 """Defines the set of hyperparameters to be specified in the config file."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
 from omegaconf import MISSING, DictConfig
 
@@ -101,7 +101,7 @@ class ObjectiveCurriculumParams(DictConfig):
 
 ## Data-driven curriculum learning parameters ##
 @dataclass
-class PacingFunctionParams(DictConfig):
+class PacingFunctionParams(Mapping[str, Any]):
     # Num of steps to take (in percent) before beginning the curriculum
     start_percent: float
     # Num of steps to take (in percent) before ending the curriculum
@@ -115,7 +115,7 @@ class PacingFunctionParams(DictConfig):
 
 # Difficulty Scorer Parameters
 @dataclass
-class NGramPerplexityDifficultyScorerParams(DictConfig):
+class NGramPerplexityDifficultyScorerParams(Mapping[str, Any]):
     # n-gram perplexity parameters
     n_gram: int
 

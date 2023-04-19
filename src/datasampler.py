@@ -1,13 +1,15 @@
 """ Module for custom data samplers. """
 
+import copy
 import logging
-from typing import Callable, Iterator, Protocol, Sequence, Union
+from typing import Callable, Iterator, Sequence, Union
 
 # typing imports
 import torch
 from torch import Generator
 from torch.utils.data import Dataset, Sampler
 from torch.utils.data.distributed import DistributedSampler
+from typing_extensions import Protocol
 
 from .difficulty_scorer import BaseDifficultyScorer
 
@@ -71,6 +73,8 @@ class CurriculumIterMixin:
 
             difficulty_scores_tensor = torch.tensor(difficulty_scores)
 
+            # NOTE: the problem is that we still have 'text' in the dataste
+
             for i in torch.multinomial(
                 difficulty_scores_tensor, self.batch_size, replacement=False
             ):
@@ -103,7 +107,7 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
             * global_stepnum: the global stepnum of the training loop
         """
 
-        self.dataset = dataset
+        self.dataset = copy.deepcopy(dataset)
 
         self.indices: Sequence[int] = list(range(len(dataset)))  # type: ignore[arg-type]
 
@@ -153,7 +157,7 @@ class DistributedCurriculumSampler(CurriculumIterMixin, DistributedSampler):
         # NOTE: Shuffle needs to be False otherwise there's no point to applying a curriculum
         kwargs["drop_last"] = True
         kwargs["shuffle"] = False
-        super().__init__(dataset, **kwargs)
+        super().__init__(copy.deepcopy(dataset), **kwargs)
 
         self.difficulty_scorer = difficulty_scorer
         self.pacing_fn = pacing_fn

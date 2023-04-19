@@ -1,17 +1,19 @@
-from typing import Protocol
+""" This module uses the difficulty scorer registry to get a difficulty scorer"""
 
 from transformers import PreTrainedTokenizerFast, Trainer
-from typing_extensions import runtime_checkable
+from typing_extensions import Protocol, runtime_checkable
 
 # typing imports
 from ..config import DifficultyScorerKwargsType
 from .base_difficulty_scorer import BaseDifficultyScorer
+
+# importing for registry to register difficulty scorers
 from .ngram_perplexity import NGramPerplexityScorer
 from .registry import DIFFICULTY_SCORER_REGISTRY
 
 
 @runtime_checkable
-class UsesTokenizers(Protocol):
+class UsesTokenizer(Protocol):
     tokenizer: PreTrainedTokenizerFast
 
 
@@ -51,7 +53,7 @@ def get_difficulty_scorer(
         if isinstance(difficulty_scorer, UsesTrainer):
             difficulty_scorer.trainer = trainer
 
-        if isinstance(difficulty_scorer, UsesTokenizers):
+        if isinstance(difficulty_scorer, UsesTokenizer):
             # NOTE: This assert statement should never fail, since we run a similar check on the
             # tokenizer before initializing the trainer. It is needed, however, to narrow the type
             # to pass type checking.
