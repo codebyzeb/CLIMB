@@ -74,7 +74,7 @@ class TrainerParams(DictConfig):
 ### Curriculum learning parameter: can be either objective or data-driven ###
 
 
-## bjective curriculum learning parameters ##
+## Objective curriculum learning parameters ##
 @dataclass
 class ObjectiveCurriculumUnitParams(DictConfig):
     # any curriculum requires the following parameters
@@ -119,6 +119,7 @@ class PacingFunctionParams(Mapping[str, Any]):
 class NGramPerplexityDifficultyScorerParams(Mapping[str, Any]):
     # n-gram perplexity parameters
     n_gram: int
+    steps: Optional[Union[int, List[int]]] = None
 
 
 DifficultyScorerKwargsType = Union[NGramPerplexityDifficultyScorerParams, None]

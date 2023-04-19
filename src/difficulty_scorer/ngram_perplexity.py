@@ -14,7 +14,7 @@ from datasets import Dataset
 # NLTK Package provides functionality for n-gram models
 from nltk.lm import MLE
 from nltk.util import everygrams
-from transformers import PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizerFast, Trainer
 
 from .base_difficulty_scorer import BaseDifficultyScorer
 from .registry import register_difficulty_scorer
@@ -154,3 +154,51 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
             ]
 
         return self._difficulty_scores
+
+
+@register_difficulty_scorer("ngram_perplexity_active")
+class NGramPerplexityActiveScorer(NGramPerplexityScorer):
+    def __init__(self, n_gram: int, update_steps: Union[List, int]):
+        """
+        Initializes the n-gram perplexity scorer.
+
+        Args:
+            * n_gram (int): The n-gram to use for the n-gram model
+            * update_steps (Union[List, int]): The steps at which to update the n-gram model, either a list of steps or an int
+        """
+    
+        super().__init__(n_gram)
+        self.trainer = None
+    
+    @property
+    def trainer(self) -> Union[Trainer, None]:
+        return self._trainer
+    
+    @trainer.setter
+    def trainer(self, trainer: Trainer):
+        self._trainer = trainer
+
+    def score_difficulty(
+        self, 
+        dataset: Dataset, 
+        indices: List[int], 
+        global_stepnum: int, 
+        max_difficulty_percentile: float) -> Sequence[float]:
+        
+        # if the global stepnum is 0, use the parent class's method
+        if global_stepnum == 0:
+            return super().score_difficulty(dataset, indices, global_stepnum, max_difficulty_percentile)
+        else:
+            # if the global stepnum is in the list of update steps, use the trainer's model to infer the perplexity scores on the dataset
+            if global_stepnum in self.update_steps:
+                logger.info(f"Evaluating perplexity of n-grams using model at step {global_stepnum}")
+                difficulty_scores = []
+                for idx in indices:
+                    input_ids = dataset[idx]['input_ids']
+                    attention_mask = dataset[idx]['attention_mask']
+                    perplexity = self.trainer.model(input_ids, attention_mask).perplexity
+                    difficulty_scores.append(perplexity)
+                return difficulty_scores
+            
+            return difficulty_scores
+
