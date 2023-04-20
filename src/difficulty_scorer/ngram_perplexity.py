@@ -5,7 +5,7 @@ of a dataset based on the perplexity of a n-gram model trained on the dataset.
 
 import logging
 from typing import List, Sequence, Union
-
+import torch
 import numpy as np
 
 # typing imports
@@ -62,19 +62,21 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
 
         logger.info("Training n-gram model")
 
-        tokenized_dataset = dataset.map(
-            lambda x: {
-                "tokenized_text": self.tokenizer.tokenize(
-                    x["text"], add_special_tokens=True
-                )
-                if self.tokenizer is not None
-                else None
-            },
-            remove_columns=["text"],
-            num_proc=64,
-        )
+        # We tokenize the dataset and store the tokenized dataset in self.tokenized_text
+        if not hasattr(self, "tokenized_text"):
+            tokenized_dataset = dataset.map(
+                lambda x: {
+                    "tokenized_text": self.tokenizer.tokenize(
+                        x["text"], add_special_tokens=True
+                    )
+                    if self.tokenizer is not None
+                    else None
+                },
+                remove_columns=["text"],
+                num_proc=64,
+            )
 
-        self.tokenized_text = tokenized_dataset["tokenized_text"]
+            self.tokenized_text = tokenized_dataset["tokenized_text"]
 
         # We split the tokenized dataset into n-gram that we can feed into the n-gram model
         train_data_n_grams = (
@@ -158,17 +160,19 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
 
 @register_difficulty_scorer("ngram_perplexity_active")
 class NGramPerplexityActiveScorer(NGramPerplexityScorer):
-    def __init__(self, n_gram: int, update_steps: Union[List, int]):
+    def __init__(self, n_gram: int, update: int):
         """
         Initializes the n-gram perplexity scorer.
 
         Args:
             * n_gram (int): The n-gram to use for the n-gram model
-            * update_steps (Union[List, int]): The steps at which to update the n-gram model, either a list of steps or an int
+            * update (int): The number of steps to wait before updating the n-gram model
         """
     
         super().__init__(n_gram)
+        self.update = update
         self.trainer = None
+        self.tokenizer = None
     
     @property
     def trainer(self) -> Union[Trainer, None]:
@@ -178,6 +182,29 @@ class NGramPerplexityActiveScorer(NGramPerplexityScorer):
     def trainer(self, trainer: Trainer):
         self._trainer = trainer
 
+    def _perplexity(self, ngram: List)-> float:
+        """
+        Args:
+            * ngram: The n-gram to calculate the perplexity of
+        Returns:
+            * perplexity (float): The perplexity of the n-gram
+
+        """
+
+        # Convert the n-grams to tensors
+        input_ids = torch.tensor(ngram, dtype=torch.long).unsqueeze(0)
+        print(f"input_ids: {input_ids}")
+        # Calculate the logits for each n-gram
+        with torch.no_grad():
+            logits = self.trainer.model(input_ids)[0]
+        
+        # Calculate the average cross-entropy loss for the n-grams
+        loss = torch.nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), input_ids.view(-1))
+        print(f"loss: {loss}")
+        perplexity = torch.exp(loss)
+        print(f"perplexity: {perplexity}")
+        return perplexity.item()
+    
     def score_difficulty(
         self, 
         dataset: Dataset, 
@@ -190,15 +217,43 @@ class NGramPerplexityActiveScorer(NGramPerplexityScorer):
             return super().score_difficulty(dataset, indices, global_stepnum, max_difficulty_percentile)
         else:
             # if the global stepnum is in the list of update steps, use the trainer's model to infer the perplexity scores on the dataset
-            if global_stepnum in self.update_steps:
-                logger.info(f"Evaluating perplexity of n-grams using model at step {global_stepnum}")
-                difficulty_scores = []
-                for idx in indices:
-                    input_ids = dataset[idx]['input_ids']
-                    attention_mask = dataset[idx]['attention_mask']
-                    perplexity = self.trainer.model(input_ids, attention_mask).perplexity
-                    difficulty_scores.append(perplexity)
-                return difficulty_scores
-            
-            return difficulty_scores
+            if global_stepnum % self.update == 0:
+                logger.info(f"Recaclulating sample weights using model at step {global_stepnum}")
+                difficulty_scores: Sequence[float] = []
+                
+                # this should happen when global_stepnum is 0
+                assert hasattr(self, "tokenized_text"), "tokenized text not set"
+
+                data_n_grams = (
+                    everygrams(sent, max_len=self.n_gram)
+                    for sent in self.tokenized_text
+                )
+                
+                next_idx = indices[0]
+                logger.info(f"Re-evaluating perplexity of n-grams")
+                
+                for _idx, n_gram in enumerate(data_n_grams):
+                    if _idx == next_idx:
+                        print("calculating perplexixity for ngram: ", list(n_gram))
+                        difficulty_scores.append(self._perplexity(n_gram))
+                        indices.pop(0)
+                        if len(indices) == 0:
+                            break
+                        next_idx = indices[0]
+                        exit()
+
+                # convert difficulty scores to percentiles
+                max_difficulty = float(
+                    np.percentile(
+                        difficulty_scores, max_difficulty_percentile * 100
+                    )
+                )
+
+                # Set difficulty scores that are above the max difficulty percentile to 0
+                self._difficulty_scores = [
+                    score if score <= max_difficulty else 0.0
+                    for score in difficulty_scores
+                ]
+
+            return self._difficulty_scores
 

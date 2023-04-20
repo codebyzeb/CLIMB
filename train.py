@@ -137,7 +137,6 @@ def main(cfg: BabyLMConfig):
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
     )
-
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
 
 
