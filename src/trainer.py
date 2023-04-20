@@ -202,7 +202,7 @@ class CustomTrainer(Trainer):
 
         if self.data_curriculum:
             # A data-driven curriculum assumes we are using a difficulty scorer along with a
-            # curriculum pacing function to determine the order in whiaruch we sample data.
+            # curriculum pacing function to determine the order in which we sample data.
 
             pacing_fn = get_pacing_fn(
                 self.data_curriculum.pacing_fn_name,
@@ -215,7 +215,11 @@ class CustomTrainer(Trainer):
                 self.data_curriculum.difficulty_scorer_kwargs,
                 trainer=self,
             )
-
+            # ### For testing purposes ###
+            # indices = list(range(len(self.train_dataset)))
+            # difficulty_scorer.score_difficulty(dataset=self.train_dataset, indices=indices, global_stepnum=0, max_difficulty_percentile=.5)
+            # exit()
+            # ### End testing code ###
             if self.args.world_size <= 1:
                 return CurriculumSampler(
                     self.train_dataset,
