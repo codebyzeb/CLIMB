@@ -219,13 +219,25 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
         # flatten the list of list of input ids
         input_ids = [id for ngram in input_ids for id in ngram]
         
+        mask_idx = self.tokenizer.mask_token_id
+        pad_idx = self.tokenizer.pad_token_id
+
         # convert the input IDs to a PyTorch tensor
         input_tensor = torch.tensor([input_ids])
-
-        # evaluate the model on the input sequence and compute perplexity
-        labels = torch.where(input_tensor != self.tokenizer.pad_token_id, input_tensor, -100)
+        # set all pad tokens to -100, the model will exclude them from the loss
+        input_tensor = torch.where(input_tensor != pad_idx, input_tensor, -100)
         
-        outputs = self.trainer.model(input_tensor, labels=labels)
+        # prepare masks and input
+        repeat_tensor = input_tensor.repeat(input_tensor.size(-1)-2, 1)
+        mask = torch.ones(input_tensor.size(-1)-1).diag(1)[:-2]
+        masked_input = repeat_tensor.masked_fill(mask ==1, mask_idx)
+        labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
+        
+        self.trainer.model.eval()
+        # # evaluate the model on the input sequence and compute perplexity
+        # labels = torch.where(input_tensor != self.tokenizer.pad_token_id, input_tensor, -100)
+        
+        outputs = self.trainer.model(masked_input, labels=labels)
         loss = outputs.loss.item()
         perplexity = torch.exp(torch.tensor(loss)).item()
         return perplexity
