@@ -6,14 +6,15 @@ import os
 # config-related imports
 import hydra
 
+# wandb for logging metrics
+import wandb
+
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from transformers import TrainingArguments
 
-# wandb for logging metrics
-import wandb
 from src.config import BabyLMConfig
 from src.models import load_model
 from src.preprocessing import DataPreprocessor
@@ -65,10 +66,12 @@ def main(cfg: BabyLMConfig):
     logger.info("Preprocessing data")
 
     data_preprocessor = DataPreprocessor(cfg, tokenizer)
-    processed_dataset = dataset.map(
-        data_preprocessor,
-        batched=True,
-        num_proc=64,
+    train_dataset = dataset["train"].map(
+        data_preprocessor, batched=True, num_proc=64
+    )
+    data_preprocessor.concat_input = False
+    eval_dataset = dataset["validation"].map(
+        data_preprocessor, batched=True, num_proc=64
     )
 
     # Setting up wandb
@@ -130,8 +133,8 @@ def main(cfg: BabyLMConfig):
         hydra_config=cfg,
         model=model,
         args=training_args,
-        train_dataset=processed_dataset["train"],
-        eval_dataset=processed_dataset["validation"],
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         tokenizer=tokenizer,
     )
 
