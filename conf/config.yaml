@@ -3,7 +3,7 @@ defaults:
   - _self_
   - dataset: strict_small 
   - tokenizer: babyberta_tuned
-  - model: babyberta_mlm
+  - model: babyberta
   - objective_curriculum: base_mlm
   - data_curriculum: linear_perplexity
   - vocabulary_curriculum: linear_token_ids
