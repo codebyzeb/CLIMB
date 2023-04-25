@@ -1,4 +1,4 @@
-name: 'roberta_pre_layer_norm_for_masked_lm'
+name: 'roberta_pre_layer_norm'
 
 resume_checkpoint_path: null
 

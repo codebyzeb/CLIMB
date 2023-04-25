@@ -9,8 +9,8 @@ from .registry import CONFIG_REGISTRY, MODEL_REGISTRY
 from .roberta import *
 
 
-def load_model(cfg: BabyLMConfig) -> PreTrainedModel:
-    """Loads the model from the config file"""
+def load_base_model(cfg: BabyLMConfig) -> PreTrainedModel:
+    """Loads the base model from the config file"""
 
     remove_keys = ["name", "load_from_checkpoint", "checkpoint_path"]
     model_kwargs = {

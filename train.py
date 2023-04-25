@@ -16,7 +16,7 @@ from omegaconf import OmegaConf
 from transformers import TrainingArguments
 
 from src.config import BabyLMConfig
-from src.models import load_model
+from src.models import load_base_model
 from src.preprocessing import DataPreprocessor
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
@@ -60,7 +60,7 @@ def main(cfg: BabyLMConfig):
 
     # Load model
     logger.info("Initializing model")
-    model = load_model(cfg)
+    model = load_base_model(cfg)
 
     # Preprocess data
     logger.info("Preprocessing data")
