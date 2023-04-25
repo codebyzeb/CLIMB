@@ -1,6 +1,7 @@
 """ Main trainer class for BabyLM. """
 
 import logging
+import math
 import os
 import shutil
 import time
@@ -333,27 +334,52 @@ class CustomTrainer(Trainer):
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
+        eval_dataloader = self.get_eval_dataloader(eval_dataset)
         start_time = time.time()
 
+        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        output = eval_loop(
+            eval_dataloader,
+            description="Evaluation",
+            # No point gathering the predictions if there are no metrics, otherwise we defer to
+            # self.args.prediction_loss_only
+            prediction_loss_only=False, # Ensure we get predictions back so we can compute perplexity
+            ignore_keys=ignore_keys,
+            metric_key_prefix=metric_key_prefix,
+        )
+
+        # Additional behaviour - evaluate on BLIMP
         self.save_model(self.args.output_dir, _internal_call=True)
         self.save_model(_internal_call=True)
-
         evaluator = BlimpEvaluator(self.args.output_dir)
         metrics = evaluator()
-        # Prefix all keys with metric_key_prefix + '_'
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-        metrics.update(speed_metrics(metric_key_prefix, start_time))
+        output.metrics.update(metrics)
 
-        logger.info(metrics)
-
-        self.control = self.callback_handler.on_evaluate(
-            self.args, self.state, self.control, metrics
+        # Additional behaviour - calculate perplexity on dev set
+        perplexity = self.compute_perplexity()
+        metrics[f"{metric_key_prefix}_perplexity"] = perplexity
+        
+        total_batch_size = self.args.eval_batch_size * self.args.world_size
+        if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
+            start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
+        output.metrics.update(
+            speed_metrics(
+                metric_key_prefix,
+                start_time,
+                num_samples=output.num_samples,
+                num_steps=math.ceil(output.num_samples / total_batch_size),
+            )
         )
 
-        self._memory_tracker.stop_and_update_metrics(metrics)
+        self.log(output.metrics)
 
-        self.log(metrics)
+        self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, output.metrics)
 
-        return metrics
+        self._memory_tracker.stop_and_update_metrics(output.metrics)
+
+        return output.metrics
+
+
