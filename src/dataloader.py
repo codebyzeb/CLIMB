@@ -95,15 +95,14 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         Returns next data from this iterator.
         """
 
-        if not isinstance(
+        if isinstance(
             self.loader.sampler,
             (CurriculumSampler, DistributedCurriculumSampler),
         ):
-            return super()._next_data()
-
-        assert (
-            self.loader.sampler.global_stepnum == self.loader.global_stepnum
-        ), "The global stepnum of the sampler and the dataloader are not the same"
+            assert (
+                self.loader.sampler.global_stepnum
+                == self.loader.global_stepnum
+            ), "The global stepnum of the sampler and the dataloader are not the same"
 
         index = self._next_index()  # may raise StopIteration
 

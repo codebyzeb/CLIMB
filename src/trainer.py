@@ -47,7 +47,12 @@ class CurriculumLearningCallback(TrainerCallback):
         self, args, state, control, train_dataloader, **kwargs
     ) -> None:
         train_dataloader.global_stepnum += 1
-        train_dataloader.sampler.global_stepnum += 1
+
+        if isinstance(
+            train_dataloader.sampler,
+            (CurriculumSampler, DistributedCurriculumSampler),
+        ):
+            train_dataloader.sampler.global_stepnum += 1
 
 
 class CustomTrainer(Trainer):
