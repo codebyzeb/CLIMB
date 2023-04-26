@@ -338,28 +338,31 @@ class CustomTrainer(Trainer):
         metrics = {}
 
         # Additional behavior - evaluate perplexity
+        # Get 10_000 samples from the eval dataset
+        eval_subset = self.eval_dataset.select(range(0, self.eval_dataset.num_rows, self.eval_dataset.num_rows//10000))
         logging.info("Evaluating perplexity...")
+        logging.info(f" ** Number of samples: {eval_subset.num_rows}")
         pad_idx = self.tokenizer.pad_token_id
         mask_idx = self.tokenizer.mask_token_id
         perplexities = []
-        for input_ids in self.eval_dataset["input_ids"]:
-            # Remove padding tokens
-            pad_loc = input_ids.index(pad_idx)
-            input_ids = input_ids[:pad_loc]
+        with torch.no_grad():
+            for input_ids in eval_subset["input_ids"]:
+                # Remove padding tokens
+                pad_loc = input_ids.index(pad_idx) if input_ids[-1] == pad_idx else len(input_ids)
+                input_ids = input_ids[:pad_loc]
 
-            # Prepare masks and input
-            input_tensor = torch.tensor(input_ids).to(self.args.device)
-            repeat_tensor = input_tensor.repeat(input_tensor.size(-1) - 2, 1)
-            mask = torch.ones(input_tensor.size(-1) - 1).diag(1)[:-2]
-            masked_input = repeat_tensor.masked_fill(mask == 1, mask_idx)
-            labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
-            self.model.eval()
-            loss = self.model(masked_input, labels=labels).loss
-            perplexities.append(torch.exp(loss))
+                # Prepare masks and input
+                input_tensor = torch.tensor(input_ids).to(self.args.device)
+                repeat_tensor = input_tensor.repeat(input_tensor.size(-1) - 2, 1)
+                mask = torch.ones(input_tensor.size(-1) - 1).to(self.args.device).diag(1)[:-2]
+                masked_input = repeat_tensor.masked_fill(mask == 1, mask_idx)
+                labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
+                loss = self.model(masked_input, labels=labels).loss
+                perplexities.append(torch.exp(loss).item())
         metrics["perplexity_mean"] = torch.mean(
-            torch.stack(perplexities)
+            torch.tensor(perplexities)
         ).item()
-        metrics["perplexity_std"] = torch.std(torch.stack(perplexities)).item()
+        metrics["perplexity_std"] = torch.std(torch.tensor(perplexities)).item()
 
         # Additional behaviour - evaluate on BLIMP
         logging.info("Evaluating on BLIMP...")
