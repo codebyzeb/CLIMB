@@ -97,7 +97,7 @@ class ObjectiveCurriculumParams(DictConfig):
     # objective curriculum learning parameters
 
     units: Dict[str, ObjectiveCurriculumUnitParams]
-    steps: Dict[int, str]
+    steps: Dict[str, List[float]]
 
 
 ## Data-driven curriculum learning parameters ##

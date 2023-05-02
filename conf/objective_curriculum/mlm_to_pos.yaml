@@ -3,6 +3,8 @@ defaults:
     - mlm
     - pos
 
-steps: {0: "mlm", 
-        2: "pos"}
+steps: {
+  "mlm": [0,0.1], 
+  "pos": [0.1,1]
+}
 
