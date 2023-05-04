@@ -8,6 +8,7 @@ import logging
 from typing import List, Mapping, Sequence, Union
 import torch
 import numpy as np
+from abc import abstractmethod
 
 
 # typing imports
@@ -24,8 +25,41 @@ from .registry import register_difficulty_scorer
 logger = logging.getLogger("DifficultyScorer")
 
 
+class PerplexityBaseClass(BaseDifficultyScorer):
+    """a class encapsulating shared logic between SelfPerplexityScorer and NGramPerplexityScorer"""
+
+    @abstractmethod
+    def _perplexity(self, example):
+        raise NotImplementedError
+    
+    @property
+    def tokenizer(self) -> Union[PreTrainedTokenizerFast, None]:
+        return self._tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
+        self._tokenizer = tokenizer
+
+    def convert_difficulty_scores_to_percentiles(self, difficulty_scores: Sequence[float], max_difficulty_percentile: float) -> Sequence[float]:
+        max_difficulty = float(
+            np.percentile(
+                difficulty_scores, max_difficulty_percentile * 100
+            )
+        )
+
+        # Set difficulty scores that are above the max difficulty percentile to 0
+        _difficulty_scores = [
+            score if score <= max_difficulty else 0.0
+            for score in difficulty_scores
+        ]
+        return _difficulty_scores
+
+    # okay so this can be pretty much implemented here? 
+    # maybe add a boolean flag to the class to indicate whether or not it is active, i.e.g it has an update attribute
+    
+
 @register_difficulty_scorer("ngram_perplexity")
-class NGramPerplexityScorer(BaseDifficultyScorer):
+class NGramPerplexityScorer(PerplexityBaseClass):
     def __init__(self, n_gram: int):
         """
         Initializes the n-gram perplexity scorer.
@@ -37,16 +71,7 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
         logger.info("Initializing n-gram perplexity scorer")
 
         self.n_gram = n_gram
-
         self._tokenizer = None
-
-    @property
-    def tokenizer(self) -> Union[PreTrainedTokenizerFast, None]:
-        return self._tokenizer
-
-    @tokenizer.setter
-    def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
-        self._tokenizer = tokenizer
 
     def _train_model(self, dataset: Dataset):
         """
@@ -88,6 +113,10 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
         self.lm = MLE(self.n_gram)
         self.lm.fit(train_data_n_grams, train_vocab)
 
+
+    def _perplexity(self, example):
+        return self.lm.perplexity(example)
+    
     def score_difficulty(
         self,
         dataset: Dataset,
@@ -136,37 +165,25 @@ class NGramPerplexityScorer(BaseDifficultyScorer):
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
                     
-                    perplexity = self.lm.perplexity(n_gram)
+                    perplexity = self._perplexity(n_gram)
                     difficulty_scores.append(perplexity)
 
                     curr_indices_idx += 1
 
                     if curr_indices_idx == len(indices):
                         break
-
-            # convert difficulty scores to percentiles
-            max_difficulty = float(
-                np.percentile(
-                    difficulty_scores, max_difficulty_percentile * 100
-                )
-            )
-
-            # Set difficulty scores that are above the max difficulty percentile to 0
-            self._difficulty_scores = [
-                score if score <= max_difficulty else 0.0
-                for score in difficulty_scores
-            ]
-
+        
+        self._difficulty_scores = self.convert_difficulty_scores_to_percentiles(difficulty_scores, max_difficulty_percentile)
         return self._difficulty_scores
-
-@register_difficulty_scorer("ngram_perplexity_active")
-class NGramPerplexityScorerActive(NGramPerplexityScorer):
+  
+@register_difficulty_scorer("self_perplexity")
+class SelfPerplexityScorer(PerplexityBaseClass):
     def __init__(self, n_gram: int, update: int):
         """
         Initializes the n-gram perplexity scorer.
 
         Args:
-            * n_gram (int): The n-gram to use for the n-gram model
+            * n_gram (int): The n-gram to use for the initial n-gram model
             * update (int): The number of steps to wait before updating the n-gram model
         """
 
@@ -186,19 +203,6 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
         del state['_trainer']
         return state
     
-    # def __setstate__(self, state):
-    #     # Restore instance attributes (i.e., filename and lineno).
-    #     self.__dict__.update(state)
-    #     self._trainer = None
-
-    @property
-    def tokenizer(self) -> Union[PreTrainedTokenizerFast, None]:
-        return self._tokenizer
-
-    @tokenizer.setter
-    def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
-        self._tokenizer = tokenizer
-
     @property
     def trainer(self) -> Union[Trainer, None]:
         return self._trainer
@@ -222,21 +226,19 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
         mask_idx = self.tokenizer.mask_token_id
         pad_idx = self.tokenizer.pad_token_id
 
-        # convert the input IDs to a PyTorch tensor
+        # convert the input IDs to a PyTorch tensor 
         input_tensor = torch.tensor([input_ids])
         # set all pad tokens to -100, the model will exclude them from the loss
         input_tensor = torch.where(input_tensor != pad_idx, input_tensor, -100)
         
-        # prepare masks and input
-        repeat_tensor = input_tensor.repeat(input_tensor.size(-1)-2, 1)
-        mask = torch.ones(input_tensor.size(-1)-1).diag(1)[:-2]
+        # prepare masks and input (send to GPU if available)
+        repeat_tensor = input_tensor.repeat(input_tensor.size(-1)-2, 1).to(self.trainer.args.device)
+        mask = torch.ones(input_tensor.size(-1)-1).diag(1)[:-2].to(self.trainer.args.device)
         masked_input = repeat_tensor.masked_fill(mask ==1, mask_idx)
         labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
         
         self.trainer.model.eval()
-        # # evaluate the model on the input sequence and compute perplexity
-        # labels = torch.where(input_tensor != self.tokenizer.pad_token_id, input_tensor, -100)
-        
+
         outputs = self.trainer.model(masked_input, labels=labels)
         loss = outputs.loss.item()
         perplexity = torch.exp(torch.tensor(loss)).item()
@@ -259,24 +261,17 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
                 logger.info(f"Recalculating sample weights using model at step {global_stepnum}")
                 difficulty_scores: Sequence[float] = []
                 
-                # this should have been set at global_stepnum == 0
-                assert hasattr(self, "tokenized_text"), "tokenized text not set"
-
-                data_n_grams = (
-                    everygrams(sent, max_len=self.n_gram)
-                    for sent in self.tokenized_text
-                )
-                
                 logger.info(f"Re-evaluating perplexity of n-grams")
                 # (if we are using distributed training, not all indices will be scored - only those
                 # assigned to the current process)
                 curr_indices_idx = 0
 
-                for _idx, n_gram in enumerate(data_n_grams):
+                for _idx, ex in enumerate(dataset):
                     if _idx == indices[curr_indices_idx]:
                         # use map to tokenize each ngram and convert to input ids
-                        input_ids = map(lambda x: self.tokenizer.convert_tokens_to_ids(x), n_gram)
-
+                        input_ids = ex["input_ids"]
+                        logger.info(f'input_ids: {input_ids}')
+                        exit()
                         difficulty_scores.append(self._perplexity(input_ids))
 
                         curr_indices_idx += 1
@@ -284,18 +279,7 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
                         if curr_indices_idx == len(indices):
                             break
 
-                # convert difficulty scores to percentiles
-                max_difficulty = float(
-                    np.percentile(
-                        difficulty_scores, max_difficulty_percentile * 100
-                    )
-                )
+                self._difficulty_scores = self.convert_difficulty_scores_to_percentiles(difficulty_scores, max_difficulty_percentile)
 
-                # Set difficulty scores that are above the max difficulty percentile to 0
-                self._difficulty_scores = [
-                    score if score <= max_difficulty else 0.0
-                    for score in difficulty_scores
-                ]
-
-            return self._difficulty_scores
+                return self._difficulty_scores
     

@@ -8,7 +8,7 @@ from ..config import DifficultyScorerKwargsType
 from .base_difficulty_scorer import BaseDifficultyScorer
 
 # importing for registry to register difficulty scorers
-from .ngram_perplexity import NGramPerplexityScorer
+from .perplexity import NGramPerplexityScorer
 from .registry import DIFFICULTY_SCORER_REGISTRY
 
 
