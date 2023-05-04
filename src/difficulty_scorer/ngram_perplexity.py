@@ -256,7 +256,7 @@ class NGramPerplexityScorerActive(NGramPerplexityScorer):
         else:
             if global_stepnum % self.update == 0:
 
-                logger.info(f"Recaclulating sample weights using model at step {global_stepnum}")
+                logger.info(f"Recalculating sample weights using model at step {global_stepnum}")
                 difficulty_scores: Sequence[float] = []
                 
                 # this should have been set at global_stepnum == 0
