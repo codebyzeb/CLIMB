@@ -1,4 +1,4 @@
-  difficulty_scorer_name: "ngram_perplexity_active"
+  difficulty_scorer_name: "self_perplexity"
   difficulty_scorer_kwargs: {"n_gram": 3,
                               "update": 1}
   pacing_fn_name: "linear"

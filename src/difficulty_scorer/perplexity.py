@@ -9,6 +9,7 @@ from typing import List, Mapping, Sequence, Union
 import torch
 import numpy as np
 from abc import abstractmethod
+from tqdm import tqdm
 
 
 # typing imports
@@ -29,7 +30,7 @@ class PerplexityBaseClass(BaseDifficultyScorer):
     """a class encapsulating shared logic between SelfPerplexityScorer and NGramPerplexityScorer"""
 
     @abstractmethod
-    def _perplexity(self, example):
+    def _perplexity(self, example: Sequence[str]):
         raise NotImplementedError
     
     @property
@@ -54,9 +55,7 @@ class PerplexityBaseClass(BaseDifficultyScorer):
         ]
         return _difficulty_scores
 
-    # okay so this can be pretty much implemented here? 
-    # maybe add a boolean flag to the class to indicate whether or not it is active, i.e.g it has an update attribute
-    
+
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(PerplexityBaseClass):
@@ -113,8 +112,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         self.lm = MLE(self.n_gram)
         self.lm.fit(train_data_n_grams, train_vocab)
 
-
-    def _perplexity(self, example):
+    def _perplexity(self, example: Sequence[str]):
         return self.lm.perplexity(example)
     
     def score_difficulty(
@@ -123,7 +121,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         indices: List[int],
         global_stepnum: int,
         max_difficulty_percentile: float,
-    ) -> Sequence[float]:
+        ) -> Sequence[float]:
         """
         Scores the difficulty of the dataset, and returns a list of scores.
 
@@ -173,7 +171,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
                     if curr_indices_idx == len(indices):
                         break
         
-        self._difficulty_scores = self.convert_difficulty_scores_to_percentiles(difficulty_scores, max_difficulty_percentile)
+            self._difficulty_scores = self.convert_difficulty_scores_to_percentiles(difficulty_scores, max_difficulty_percentile)
         return self._difficulty_scores
   
 @register_difficulty_scorer("self_perplexity")
@@ -187,12 +185,14 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             * update (int): The number of steps to wait before updating the n-gram model
         """
 
-        logger.info("Initializing active learning n-gram perplexity scorer")
+        logger.info("Initializing active learning perplexity difficulty scorer")
 
-        super().__init__(n_gram)
-
+        
+        self.ngram_model = NGramPerplexityScorer(n_gram)
         self.update = update
         self._trainer = None
+        self._tokenizer = None
+
     
     def __getstate__(self):
         # Copy the object's state from self.__dict__ which contains
@@ -211,17 +211,17 @@ class SelfPerplexityScorer(PerplexityBaseClass):
     def trainer(self, trainer: Trainer):
         self._trainer = trainer
 
-    def _perplexity(self, input_ids: Mapping)-> float:
+    def _perplexity(self, input_ids: List[int])-> float:
         """
         Args:
-            * input_ids: a list of list of input ids
+            * input_ids: a list of input ids
         Returns:
             * perplexity (float): The perplexity of the n-gram
 
         """
         
         # flatten the list of list of input ids
-        input_ids = [id for ngram in input_ids for id in ngram]
+        # input_ids = [id for ngram in input_ids for id in ngram]
         
         mask_idx = self.tokenizer.mask_token_id
         pad_idx = self.tokenizer.pad_token_id
@@ -242,6 +242,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         outputs = self.trainer.model(masked_input, labels=labels)
         loss = outputs.loss.item()
         perplexity = torch.exp(torch.tensor(loss)).item()
+
         return perplexity
     
     def score_difficulty(
@@ -251,9 +252,10 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         global_stepnum: int, 
         max_difficulty_percentile: float) -> Sequence[float]:
         
-        # if this is the initial step, use the parent class's method
+        # if this is the initial step, use the ngram model class's method
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
-            return super().score_difficulty(dataset, indices, global_stepnum, max_difficulty_percentile)
+            self.ngram_model.tokenizer = self.tokenizer
+            return self.ngram_model.score_difficulty(dataset, indices, global_stepnum, max_difficulty_percentile)
        
         else:
             if global_stepnum % self.update == 0:
@@ -261,17 +263,15 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 logger.info(f"Recalculating sample weights using model at step {global_stepnum}")
                 difficulty_scores: Sequence[float] = []
                 
-                logger.info(f"Re-evaluating perplexity of n-grams")
                 # (if we are using distributed training, not all indices will be scored - only those
                 # assigned to the current process)
                 curr_indices_idx = 0
 
-                for _idx, ex in enumerate(dataset):
+                for _idx, ex in enumerate(tqdm(dataset)):
                     if _idx == indices[curr_indices_idx]:
                         # use map to tokenize each ngram and convert to input ids
                         input_ids = ex["input_ids"]
-                        logger.info(f'input_ids: {input_ids}')
-                        exit()
+
                         difficulty_scores.append(self._perplexity(input_ids))
 
                         curr_indices_idx += 1
@@ -281,5 +281,5 @@ class SelfPerplexityScorer(PerplexityBaseClass):
 
                 self._difficulty_scores = self.convert_difficulty_scores_to_percentiles(difficulty_scores, max_difficulty_percentile)
 
-                return self._difficulty_scores
+            return self._difficulty_scores
     
