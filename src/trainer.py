@@ -78,6 +78,7 @@ class CustomTrainer(Trainer):
 
         self.objective_curriculum = hydra_config.objective_curriculum
         self.data_curriculum = hydra_config.data_curriculum
+        self.tokenizer_curriculum = hydra_config.tokenizer_curriculum
 
         objective_cl_logger.info(
             f"(Using objective curriculum {self.objective_curriculum}"
@@ -85,6 +86,10 @@ class CustomTrainer(Trainer):
         if self.data_curriculum:
             data_cl_logger.info(
                 f"Using data curriculum {self.data_curriculum}"
+            )
+        if self.tokenizer_curriculum:
+            data_cl_logger.info(
+                f"Using data curriculum {self.tokenizer_curriculum}"
             )
 
         super().__init__(**kwargs)
@@ -297,6 +302,7 @@ class CustomTrainer(Trainer):
             global_stepnum=self.state.global_step,
             objective_curriculum=self.objective_curriculum,
             tokenizer=self.tokenizer,
+            tokenizer_curriculum=self.tokenizer_curriculum,
             ignore_columns=ignore_columns,
             dataset=train_dataset,
             sampler=train_sampler,
