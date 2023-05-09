@@ -6,6 +6,7 @@ defaults:
   - model: babyberta_mlm
   - objective_curriculum: base_mlm
   - data_curriculum: linear_perplexity
+  - tokenizer_curriculum: linear_token_ids
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'

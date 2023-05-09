@@ -14,7 +14,7 @@ from transformers import PreTrainedTokenizerBase
 
 from src.objective import load_objective_collator
 
-from .config import ObjectiveCurriculumParams
+from .config import ObjectiveCurriculumParams, TokenizerCurriculumParams
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class CurriculumDataLoader(DataLoader):
         global_stepnum: int,
         objective_curriculum: ObjectiveCurriculumParams,
         tokenizer: PreTrainedTokenizerBase,
+        tokenizer_curriculum: Optional[TokenizerCurriculumParams] = None,
         ignore_columns: Optional[List[str]] = None,
         num_workers: int = 0,
         **kwargs,
@@ -50,6 +51,7 @@ class CurriculumDataLoader(DataLoader):
         self.global_stepnum = global_stepnum
         self.objective_curriculum = objective_curriculum
         self.tokenizer = tokenizer
+        self.tokenizer_curriculum = tokenizer_curriculum
         self.ignore_columns = ignore_columns
 
         if num_workers != 0:
