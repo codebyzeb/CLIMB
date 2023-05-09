@@ -138,13 +138,14 @@ class DataCurriculumParams(DictConfig):
 
     pacing_fn_kwargs: PacingFunctionParams
 
-## Tokenizer curriculum parameters ##
-@dataclass
-class TokenizerCurriculumParams(DictConfig):
-    # data-driven curriculum learning parameters
 
-    # the function used to determine which tokens to map to <unk> (aka token_ids, etc.)
-    vocabulary_scorer_name: str
+## Vocabulary curriculum parameters ##
+@dataclass
+class VocabularyCurriculumParams(DictConfig):
+    # vocabulary curriculum learning parameters
+
+    # the curriculum used to determine which tokens to map to <unk> (aka token_ids, part of speech etc.)
+    vocabulary_curriculum_name: str
 
     # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
     pacing_fn_name: str
@@ -165,4 +166,4 @@ class BabyLMConfig(DictConfig):
     trainer: TrainerParams
     objective_curriculum: ObjectiveCurriculumParams
     data_curriculum: Optional[DataCurriculumParams] = None
-    tokenizer_curriculum: Optional[TokenizerCurriculumParams] = None
+    vocabulary_curriculum: Optional[VocabularyCurriculumParams] = None
