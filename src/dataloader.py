@@ -13,8 +13,9 @@ from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
 from transformers import PreTrainedTokenizerBase
 
 from src.objective import load_objective_collator
+from src.vocabulary_map import BaseVocabularyMap
 
-from .config import ObjectiveCurriculumParams, TokenizerCurriculumParams
+from .config import ObjectiveCurriculumParams
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ class CurriculumDataLoader(DataLoader):
         global_stepnum: int,
         objective_curriculum: ObjectiveCurriculumParams,
         tokenizer: PreTrainedTokenizerBase,
-        tokenizer_curriculum: Optional[TokenizerCurriculumParams] = None,
+        vocabulary_map: Optional[BaseVocabularyMap] = None,
         ignore_columns: Optional[List[str]] = None,
         num_workers: int = 0,
         **kwargs,
@@ -44,6 +45,8 @@ class CurriculumDataLoader(DataLoader):
             * tokenizer (PreTrainedTokenizer): The tokenizer used for preprocessing the data,
                 we require the tokenizer to be loaded in explicitly because we set objective
                 collator functions that are dependent on the tokenizer.
+            * vocabulary_map (Optional[BaseVocabularyMap], optional): The vocabulary map used
+                to restrict the vocabulary of the tokenizer. Defaults to None.
             * ignore_columns (Optional[List[str]], optional): A list of columns to ignore.
                 Defaults to None.
             * num_workers (int, optional): The number of workers to use. Defaults to 0.
@@ -51,7 +54,7 @@ class CurriculumDataLoader(DataLoader):
         self.global_stepnum = global_stepnum
         self.objective_curriculum = objective_curriculum
         self.tokenizer = tokenizer
-        self.tokenizer_curriculum = tokenizer_curriculum
+        self.vocabulary_map = vocabulary_map
         self.ignore_columns = ignore_columns
 
         if num_workers != 0:
@@ -140,5 +143,14 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         if self.loader.ignore_columns is not None:
             for ignore_column in self.loader.ignore_columns:
                 data.pop(ignore_column, None)
+
+        # Restrict the vocabulary based on the curriculum step
+        if self.loader.vocabulary_map is not None:
+            data["input_ids"] = self.loader.vocabulary_map.map_tokens(
+                data["input_ids"], self.loader.global_stepnum
+            )
+            data["labels"] = self.loader.vocabulary_map.map_tokens(
+                data["labels"], self.loader.global_stepnum
+            )
 
         return data

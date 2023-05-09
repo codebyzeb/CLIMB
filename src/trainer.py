@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
 # Model Training
-from transformers import Trainer, TrainerCallback
+from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
 from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
 from transformers.utils import get_full_repo_name
 
@@ -32,6 +32,7 @@ from .difficulty_scorer import get_difficulty_scorer
 # Model Evaluation
 from .evaluator import BlimpEvaluator
 from .pacing_fn import get_pacing_fn
+from .vocabulary_map import get_vocabulary_map
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -78,7 +79,7 @@ class CustomTrainer(Trainer):
 
         self.objective_curriculum = hydra_config.objective_curriculum
         self.data_curriculum = hydra_config.data_curriculum
-        self.tokenizer_curriculum = hydra_config.tokenizer_curriculum
+        self.vocabulary_curriculum = hydra_config.vocabulary_curriculum
 
         objective_cl_logger.info(
             f"(Using objective curriculum {self.objective_curriculum}"
@@ -87,9 +88,9 @@ class CustomTrainer(Trainer):
             data_cl_logger.info(
                 f"Using data curriculum {self.data_curriculum}"
             )
-        if self.tokenizer_curriculum:
+        if self.vocabulary_curriculum:
             data_cl_logger.info(
-                f"Using data curriculum {self.tokenizer_curriculum}"
+                f"Using vocabulary curriculum {self.vocabulary_curriculum}"
             )
 
         super().__init__(**kwargs)
@@ -298,11 +299,32 @@ class CustomTrainer(Trainer):
             self.tokenizer is not None
         ), "Tokenizer is not set. Please set the tokenizer before calling the train method."
 
+        # Create the vocabulary map according to the tokenizer curriculum
+        if self.vocabulary_curriculum:
+
+            pacing_fn = get_pacing_fn(
+                self.vocabulary_curriculum.pacing_fn_name,
+                self.args.max_steps,
+                **self.vocabulary_curriculum.pacing_fn_kwargs,
+            )
+
+            # NOTE: This assert statement should never fail, since we run a similar check on the
+            # tokenizer before initializing the trainer. It is needed, however, to narrow the type
+            # to pass type checking.
+            assert isinstance(self.tokenizer, PreTrainedTokenizerFast)
+            vocabulary_map = get_vocabulary_map(
+                self.vocabulary_curriculum.vocabulary_curriculum_name,
+                self.tokenizer,
+                pacing_fn,
+            )
+        else:
+            vocabulary_map = None
+
         return CurriculumDataLoader(
             global_stepnum=self.state.global_step,
             objective_curriculum=self.objective_curriculum,
             tokenizer=self.tokenizer,
-            tokenizer_curriculum=self.tokenizer_curriculum,
+            vocabulary_map=vocabulary_map,
             ignore_columns=ignore_columns,
             dataset=train_dataset,
             sampler=train_sampler,
@@ -345,7 +367,13 @@ class CustomTrainer(Trainer):
 
         # Additional behavior - evaluate perplexity
         # Get 10_000 samples from the eval dataset
-        eval_subset = self.eval_dataset.select(range(0, self.eval_dataset.num_rows, self.eval_dataset.num_rows//10000))
+        eval_subset = self.eval_dataset.select(
+            range(
+                0,
+                self.eval_dataset.num_rows,
+                self.eval_dataset.num_rows // 10000,
+            )
+        )
         logging.info("Evaluating perplexity...")
         logging.info(f" ** Number of samples: {eval_subset.num_rows}")
         pad_idx = self.tokenizer.pad_token_id
@@ -354,21 +382,35 @@ class CustomTrainer(Trainer):
         with torch.no_grad():
             for input_ids in eval_subset["input_ids"]:
                 # Remove padding tokens
-                pad_loc = input_ids.index(pad_idx) if input_ids[-1] == pad_idx else len(input_ids)
+                pad_loc = (
+                    input_ids.index(pad_idx)
+                    if input_ids[-1] == pad_idx
+                    else len(input_ids)
+                )
                 input_ids = input_ids[:pad_loc]
 
                 # Prepare masks and input
                 input_tensor = torch.tensor(input_ids).to(self.args.device)
-                repeat_tensor = input_tensor.repeat(input_tensor.size(-1) - 2, 1)
-                mask = torch.ones(input_tensor.size(-1) - 1).to(self.args.device).diag(1)[:-2]
+                repeat_tensor = input_tensor.repeat(
+                    input_tensor.size(-1) - 2, 1
+                )
+                mask = (
+                    torch.ones(input_tensor.size(-1) - 1)
+                    .to(self.args.device)
+                    .diag(1)[:-2]
+                )
                 masked_input = repeat_tensor.masked_fill(mask == 1, mask_idx)
-                labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
+                labels = repeat_tensor.masked_fill(
+                    masked_input != mask_idx, -100
+                )
                 loss = self.model(masked_input, labels=labels).loss
                 perplexities.append(torch.exp(loss).item())
         metrics["perplexity_mean"] = torch.mean(
             torch.tensor(perplexities)
         ).item()
-        metrics["perplexity_std"] = torch.std(torch.tensor(perplexities)).item()
+        metrics["perplexity_std"] = torch.std(
+            torch.tensor(perplexities)
+        ).item()
 
         # Additional behaviour - evaluate on BLIMP
         logging.info("Evaluating on BLIMP...")
