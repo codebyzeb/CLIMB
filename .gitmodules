@@ -4,3 +4,4 @@
 [submodule "lib/evaluation-pipeline"]
 	path = lib/evaluation-pipeline
 	url = https://github.com/codebyzeb/evaluation-pipeline.git
+	ignore = dirty
