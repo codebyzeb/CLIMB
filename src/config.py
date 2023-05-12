@@ -1,6 +1,6 @@
 """Defines the set of hyperparameters to be specified in the config file."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Union
 
 from omegaconf import MISSING, DictConfig
@@ -78,8 +78,17 @@ class TrainerParams(DictConfig):
 @dataclass
 class ObjectiveCurriculumUnitParams(DictConfig):
     # any curriculum requires the following parameters
-    name: str
+
     mask_probability: float
+
+    # parameters for the task head architecture
+    task_head_params: Optional[Dict[str, Any]] = field(default_factory=dict)
+
+    # parameters for the optimizer
+    optimizer_params: Optional[Dict[str, Any]] = field(default_factory=dict)
+
+    # parameters for the scheduler
+    scheduler_params: Optional[Dict[str, Any]] = field(default_factory=dict)
 
     # Additional optional kwargs dependent on the objective curriculum unit
     num_mask_patterns: Optional[int] = None
