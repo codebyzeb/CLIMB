@@ -8,10 +8,16 @@ from transformers import (
     RobertaConfig,
     RobertaModel,
     RobertaPreLayerNormConfig,
+    RobertaPreLayerNormForMaskedLM,
     RobertaPreLayerNormModel,
 )
 
 ### Wrapping the Roberta models to make them compatible with the model registry ###
+
+
+@register_model("roberta_pre_layer_norm_mlm", RobertaPreLayerNormConfig)
+class BaseRobertaPreLayerNormMLMModel(RobertaPreLayerNormForMaskedLM):
+    pass
 
 
 @register_model("roberta_pre_layer_norm", RobertaPreLayerNormConfig)

@@ -1,11 +1,12 @@
 """ Main trainer class for BabyLM. """
 
+import copy
 import logging
 import os
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 from huggingface_hub.hf_api import create_repo
@@ -18,19 +19,27 @@ from torch.utils.data.distributed import DistributedSampler
 
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
+from transformers.modeling_utils import unwrap_model
 from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
+from transformers.training_args import TrainingArguments
 from transformers.utils import get_full_repo_name
+
+# Model Loading
+from src.models import load_base_model
 
 # typing imports
 from .config import BabyLMConfig
 
-# Data Sampling
+# Data Sampling and Data Curriculum
 from .dataloader import CurriculumDataLoader
 from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 from .difficulty_scorer import get_difficulty_scorer
 
 # Model Evaluation
 from .evaluator import BlimpEvaluator
+
+# Objective Curriculum
+from .objective_curriculum import ObjectiveCurriculum
 from .pacing_fn import get_pacing_fn
 from .vocabulary_map import get_vocabulary_map
 
@@ -44,10 +53,7 @@ class CurriculumLearningCallback(TrainerCallback):
     A TrainerCallback that updates the data sampler and data collator with the current global step of training.
     """
 
-    def on_step_end(
-        self, args, state, control, train_dataloader, **kwargs
-    ) -> None:
-        train_dataloader.global_stepnum += 1
+    def on_step_end(self, *_, train_dataloader, **kwargs) -> None:
 
         if isinstance(
             train_dataloader.sampler,
@@ -55,11 +61,27 @@ class CurriculumLearningCallback(TrainerCallback):
         ):
             train_dataloader.sampler.global_stepnum += 1
 
+        train_dataloader.global_stepnum += 1
+
+
+class TaskTrainerCallback(TrainerCallback):
+    """
+    A TrainerCallback that handles updating the task heads of the model.
+    """
+
+    def __init__(self, objective_curriculum) -> None:
+        self.objective_curriculum = objective_curriculum
+
+    def on_step_end(self, args, state, control, **kwargs) -> None:
+        self.objective_curriculum.optimizer_step(state.global_step)
+
 
 class CustomTrainer(Trainer):
     def __init__(
         self,
         hydra_config: BabyLMConfig,
+        args: TrainingArguments,
+        tokenizer: PreTrainedTokenizerFast,
         **kwargs,
     ) -> None:
         """
@@ -70,31 +92,46 @@ class CustomTrainer(Trainer):
 
         Args:
             * hydra_config: (BabyLMConfig): The config object.
+            * args (TrainingArguments): The training arguments, unpacked from the kwargs dict
+                in order to have access to possible arguments meant to be used in the Custom
+                Trainer class.
         """
+
+        super().__init__(args=args, **kwargs)
 
         self.hydra_config = hydra_config
 
         self.experiment_group = hydra_config.experiment.group
         self.experiment_name = hydra_config.experiment.name
 
-        self.objective_curriculum = hydra_config.objective_curriculum
-        self.data_curriculum = hydra_config.data_curriculum
-        self.vocabulary_curriculum = hydra_config.vocabulary_curriculum
+        self.objective_curriculum_cfg = hydra_config.objective_curriculum
+        self.data_curriculum_cfg = hydra_config.data_curriculum
+        self.vocabulary_curriculum_cfg = hydra_config.vocabulary_curriculum
+
+        self.objective_curriculum = ObjectiveCurriculum(
+            self.objective_curriculum_cfg,
+            args.max_steps,
+            tokenizer,
+            device=self.args.device,
+            local_rank=self.args.local_rank,
+        )
 
         objective_cl_logger.info(
-            f"(Using objective curriculum {self.objective_curriculum}"
+            f"(Using objective curriculum configuration {self.objective_curriculum_cfg}"
         )
-        if self.data_curriculum:
+        if self.data_curriculum_cfg:
             data_cl_logger.info(
-                f"Using data curriculum {self.data_curriculum}"
+                f"Using data curriculum configuration {self.data_curriculum_cfg}"
             )
-        if self.vocabulary_curriculum:
+        if self.vocabulary_curriculum_cfg:
             data_cl_logger.info(
-                f"Using vocabulary curriculum {self.vocabulary_curriculum}"
+                f"Using vocabulary curriculum {self.vocabulary_curriculum_cfg}"
             )
 
-        super().__init__(**kwargs)
+        self.tokenizer = tokenizer
+
         self.add_callback(CurriculumLearningCallback())
+        self.add_callback(TaskTrainerCallback(self.objective_curriculum))
 
     def init_git_repo(self, at_init: bool = False) -> None:
         """
@@ -200,19 +237,19 @@ class CustomTrainer(Trainer):
             else self.args.seed
         )
 
-        if self.data_curriculum:
+        if self.data_curriculum_cfg:
             # A data-driven curriculum assumes we are using a difficulty scorer along with a
             # curriculum pacing function to determine the order in which we sample data.
 
             pacing_fn = get_pacing_fn(
-                self.data_curriculum.pacing_fn_name,
+                self.data_curriculum_cfg.pacing_fn_name,
                 self.args.max_steps,
-                **self.data_curriculum.pacing_fn_kwargs,
+                **self.data_curriculum_cfg.pacing_fn_kwargs,
             )
 
             difficulty_scorer = get_difficulty_scorer(
-                self.data_curriculum.difficulty_scorer_name,
-                self.data_curriculum.difficulty_scorer_kwargs,
+                self.data_curriculum_cfg.difficulty_scorer_name,
+                self.data_curriculum_cfg.difficulty_scorer_kwargs,
                 trainer=self,
             )
             # ### For testing purposes ###
@@ -227,7 +264,7 @@ class CustomTrainer(Trainer):
                     pacing_fn=pacing_fn,
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
-                    global_stepnum=0,
+                    global_stepnum=self.state.global_step,
                 )
             else:
                 return DistributedCurriculumSampler(
@@ -236,7 +273,7 @@ class CustomTrainer(Trainer):
                     pacing_fn=pacing_fn,
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
-                    global_stepnum=0,
+                    global_stepnum=self.state.global_step,
                     num_replicas=self.args.world_size,
                     rank=self.args.process_index,
                     seed=seed,
@@ -305,12 +342,12 @@ class CustomTrainer(Trainer):
         ), "Tokenizer is not set. Please set the tokenizer before calling the train method."
 
         # Create the vocabulary map according to the tokenizer curriculum
-        if self.vocabulary_curriculum:
+        if self.vocabulary_curriculum_cfg:
 
             pacing_fn = get_pacing_fn(
-                self.vocabulary_curriculum.pacing_fn_name,
+                self.vocabulary_curriculum_cfg.pacing_fn_name,
                 self.args.max_steps,
-                **self.vocabulary_curriculum.pacing_fn_kwargs,
+                **self.vocabulary_curriculum_cfg.pacing_fn_kwargs,
             )
 
             # NOTE: This assert statement should never fail, since we run a similar check on the
@@ -318,7 +355,7 @@ class CustomTrainer(Trainer):
             # to pass type checking.
             assert isinstance(self.tokenizer, PreTrainedTokenizerFast)
             vocabulary_map = get_vocabulary_map(
-                self.vocabulary_curriculum.vocabulary_curriculum_name,
+                self.vocabulary_curriculum_cfg.vocabulary_curriculum_name,
                 self.tokenizer,
                 pacing_fn,
             )
@@ -339,11 +376,27 @@ class CustomTrainer(Trainer):
             pin_memory=self.args.dataloader_pin_memory,
         )
 
+    def compute_loss(self, model, inputs, **kwargs):
+
+        base_model_outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+        )
+        base_model_hidden_states = base_model_outputs[0]
+
+        # NOTE: We need to compute the loss for each objective unit, and then sum them up.
+        total_loss = torch.tensor(0.0).to(self.args.device)
+
+        for unit_name, unit in self.objective_curriculum[
+            self.state.global_step
+        ].items():
+            total_loss += unit.compute_loss(base_model_hidden_states, inputs)
+        return total_loss
+
     def evaluate(
         self,
-        eval_dataset=None,
-        ignore_keys=None,
         metric_key_prefix: str = "eval",
+        **kwargs,
     ) -> Dict[str, float]:
         """
         Override the Trainer.evaluate() method to evaluate on BLIMP using the evaluation pipeline submodule.
@@ -446,3 +499,47 @@ class CustomTrainer(Trainer):
         self._memory_tracker.stop_and_update_metrics(metrics)
 
         return metrics
+
+    def _initialize_full_lm_model(self):
+        """
+        Initialize a full language model that includes the base model and the mlm head.
+        """
+
+        # copy hydra config and change base_model to include mlm head
+        lm_config = copy.deepcopy(self.hydra_config)
+        lm_config.model.name = lm_config.model.name + "_mlm"
+
+        lm_model = load_base_model(lm_config)
+
+        # unwrapping the base model and the mlm task head and copying that over into the lm model
+
+        lm_model.roberta_prelayernorm = unwrap_model(self.model)
+        lm_model.lm_head = self.objective_curriculum.units["mlm"].task_head
+
+        return lm_model
+
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        """
+        Override the Trainer._save() method to save the objective curriculum state as well,
+        and to save the full language model (base model + mlm head).
+        """
+        super()._save(output_dir=output_dir, state_dict=state_dict)
+
+        # NOTE: We need to save the objective curriculum state as well
+        output_dir = (
+            output_dir if output_dir is not None else self.args.output_dir
+        )
+
+        mlm_model_dir = os.path.join(output_dir, "lm_model")
+        task_heads_dir = os.path.join(output_dir, "task_heads")
+        os.makedirs(mlm_model_dir, exist_ok=True)
+        os.makedirs(task_heads_dir, exist_ok=True)
+
+        # save the full language model
+        lm_model = self._initialize_full_lm_model()
+        lm_model.save_pretrained(mlm_model_dir)
+
+        # if on main rank save objective curriculum too
+
+        if self.args.should_save:
+            self.objective_curriculum.save(output_dir=task_heads_dir)

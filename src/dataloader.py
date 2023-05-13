@@ -10,13 +10,11 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils.pin_memory import pin_memory as _torch_pin_memory
 from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind
 from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
-from transformers import PreTrainedTokenizerBase
+from transformers import PreTrainedTokenizerFast
 
-from src.objective import load_objective_collator
+from .objective_curriculum import ObjectiveCurriculum, StackedCollator
+
 from src.vocabulary_map import BaseVocabularyMap
-
-from .config import ObjectiveCurriculumParams
-from .datasampler import CurriculumSampler, DistributedCurriculumSampler
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -26,8 +24,8 @@ class CurriculumDataLoader(DataLoader):
     def __init__(
         self,
         global_stepnum: int,
-        objective_curriculum: ObjectiveCurriculumParams,
-        tokenizer: PreTrainedTokenizerBase,
+        objective_curriculum: ObjectiveCurriculum,
+        tokenizer: PreTrainedTokenizerFast,
         vocabulary_map: Optional[BaseVocabularyMap] = None,
         ignore_columns: Optional[List[str]] = None,
         num_workers: int = 0,
@@ -41,8 +39,9 @@ class CurriculumDataLoader(DataLoader):
 
         Args:
             * global_stepnum (int): The current step in the curriculum
-            * objective_curriculum (ObjectiveCurriculumParams): The curriculum config object
-            * tokenizer (PreTrainedTokenizer): The tokenizer used for preprocessing the data,
+            * objective_curriculum (ObjectiveCurriculum): The objective curriculum object
+                that is used to determine the current (set of) objective(s).
+            * tokenizer (PreTrainedTokenizerFast): The tokenizer used for preprocessing the data,
                 we require the tokenizer to be loaded in explicitly because we set objective
                 collator functions that are dependent on the tokenizer.
             * vocabulary_map (Optional[BaseVocabularyMap], optional): The vocabulary map used
@@ -100,38 +99,43 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         Returns next data from this iterator.
         """
 
-        if isinstance(
-            self.loader.sampler,
-            (CurriculumSampler, DistributedCurriculumSampler),
-        ):
-            assert (
-                self.loader.sampler.global_stepnum
-                == self.loader.global_stepnum
-            ), "The global stepnum of the sampler and the dataloader are not the same"
-
         index = self._next_index()  # may raise StopIteration
 
-        # based on the global_stepnum, we might create a new dataset fetcher with a different collate fn
-        if (
+        # Based on the current stepnum, we set the objective collator using the objective
+        # curriculum.
+
+        active_objective_units = self.loader.objective_curriculum[
             self.loader.global_stepnum
-            in self.loader.objective_curriculum.steps.keys()
-        ):
-            logger.info(
-                f"(Curriculum Learning) Setting curriculum at step: {self.loader.global_stepnum}"
+        ]
+
+        if len(active_objective_units) == 0:
+            raise ValueError(
+                f"No Active Curriculum at step {self.loader.global_stepnum}"
             )
 
-            self._collate_fn = load_objective_collator(
-                curriculum=self.loader.objective_curriculum,
-                tokenizer=self.loader.tokenizer,
-                step=self.loader.global_stepnum,
+        elif len(active_objective_units) == 1:
+            collate_fn = list(active_objective_units.values())[
+                0
+            ].objective_collator
+        else:
+            collate_fn = StackedCollator(
+                {
+                    task_unit_name: task_unit.objective_collator
+                    for task_unit_name, task_unit in active_objective_units.items()
+                },
             )
-            self._dataset_fetcher = _DatasetKind.create_fetcher(
-                self._dataset_kind,
-                self._dataset,
-                self._auto_collation,
-                self._collate_fn,
-                self._drop_last,
-            )
+
+        logger.info(
+            f"(Curriculum Learning) Setting curriculum at step: {self.loader.global_stepnum}"
+        )
+
+        self._dataset_fetcher = _DatasetKind.create_fetcher(
+            self._dataset_kind,
+            self._dataset,
+            self._auto_collation,
+            collate_fn,
+            self._drop_last,
+        )
 
         data: Dict[str, Tensor] = self._dataset_fetcher.fetch(
             index
