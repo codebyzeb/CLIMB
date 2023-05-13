@@ -5,7 +5,7 @@ of a dataset based on the perplexity of a n-gram model trained on the dataset.
 
 
 import logging
-from typing import List, Mapping, Sequence, Union
+from typing import List, Sequence, Union, Generator, Tuple, Any
 import torch
 import numpy as np
 from abc import abstractmethod
@@ -112,7 +112,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         self.lm = MLE(self.n_gram)
         self.lm.fit(train_data_n_grams, train_vocab)
 
-    def _perplexity(self, example: Sequence[str]):
+    def _perplexity(self, example: Tuple[Sequence[str], Generator[Tuple[str], Any, None]]):
         return self.lm.perplexity(example)
     
     def score_difficulty(
@@ -163,7 +163,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
                     
-                    perplexity = self._perplexity(n_gram)
+                    perplexity = self._perplexity(n_gram) # type: ignore
                     difficulty_scores.append(perplexity)
 
                     curr_indices_idx += 1
@@ -222,9 +222,16 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         
         # flatten the list of list of input ids
         # input_ids = [id for ngram in input_ids for id in ngram]
+
+        assert (
+            self.tokenizer is not None and self.trainer is not None
+        )
         
         mask_idx = self.tokenizer.mask_token_id
         pad_idx = self.tokenizer.pad_token_id
+
+        assert(mask_idx is not None and pad_idx is not None),\
+            "The tokenizer must have a mask token and a pad token"
 
         # convert the input IDs to a PyTorch tensor 
         input_tensor = torch.tensor([input_ids])
@@ -251,6 +258,11 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         indices: List[int], 
         global_stepnum: int, 
         max_difficulty_percentile: float) -> Sequence[float]:
+
+        assert (
+            self.tokenizer is not None
+        )
+
         
         # if this is the initial step, use the ngram model class's method
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
@@ -270,7 +282,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 for _idx, ex in enumerate(tqdm(dataset)):
                     if _idx == indices[curr_indices_idx]:
                         # use map to tokenize each ngram and convert to input ids
-                        input_ids = ex["input_ids"]
+                        input_ids = ex["input_ids"] # type: ignore
 
                         difficulty_scores.append(self._perplexity(input_ids))
 

@@ -47,7 +47,7 @@ def get_difficulty_scorer(
         )
 
         # If the difficulty scorer needs access to the trainer or the tokenizer, we pass it in
-        # NOTE: The trainer is needed if the difficult scorer uses the trainer itself to score
+        # NOTE: The trainer is needed if the difficulty scorer uses the trainer itself to score
         # the difficulty of the dataset.
 
         if isinstance(difficulty_scorer, UsesTrainer):
