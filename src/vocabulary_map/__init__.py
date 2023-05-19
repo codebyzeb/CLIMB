@@ -8,6 +8,9 @@ from transformers import PreTrainedTokenizerFast
 from .base_map import BaseVocabularyMap
 from .registry import VOCABULARY_MAP_REGISTRY
 
+# importing for registry to register difficulty scorers
+from .token_id_map import TokenIDVocabularyMap
+
 
 def get_vocabulary_map(
     vocabulary_curriculum_name: str,
@@ -33,5 +36,5 @@ def get_vocabulary_map(
 
     else:
         raise ValueError(
-            f"Difficulty Scorer {vocabulary_curriculum_name} not supported."
+            f"Vocbaulary Map Scorer {vocabulary_curriculum_name} not supported."
         )
