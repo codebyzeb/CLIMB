@@ -291,7 +291,8 @@ class CustomTrainer(Trainer):
 
         train_sampler = self._get_train_sampler()
 
-        train_dataset = self.train_dataset.remove_columns("text")  # type: ignore
+        # TODO: We're also removing the "filename" column here, might want to find a way to keep it
+        train_dataset = self.train_dataset.remove_columns(["text", "filename"])  # type: ignore
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these

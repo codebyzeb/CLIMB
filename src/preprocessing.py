@@ -8,6 +8,7 @@ from transformers import PreTrainedTokenizerFast
 
 from .config import BabyLMConfig
 
+
 class DataPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
         """
@@ -43,34 +44,57 @@ class DataPreprocessor(object):
         # concatenate the input text if concat_input is True then split into chunks of max_input_length
         if self.concat_input:
             joined_text = " ".join(examples["text"])
+            # Note: we assume that all examples have the same filename
+            # TODO: this is a hacky way to get the filename, fix this
+            filename = examples["filename"][0]
             tokenized = self.tokenizer(
                 joined_text,
                 padding="max_length",
                 max_length=self.max_input_length,
                 truncation=False,
-                return_special_tokens_mask=True
+                return_special_tokens_mask=True,
             )
 
-            batch = {'input_ids' : [], 'special_tokens_mask' : [], 'attention_mask' : []}
-            examples['text'] = []
-            for i in range(0, len(tokenized['input_ids']) - self.max_input_length+1, self.max_input_length):
-                batch['input_ids'].append(tokenized['input_ids'][i:i+self.max_input_length])
-                batch['special_tokens_mask'].append(tokenized['special_tokens_mask'][i:i+self.max_input_length])
-                batch['attention_mask'].append(tokenized['attention_mask'][i:i+self.max_input_length])
-                examples['text'].append(joined_text[i:i+self.max_input_length])
+            batch = {
+                "input_ids": [],
+                "special_tokens_mask": [],
+                "attention_mask": [],
+                "filename": [],
+            }
+            examples["text"] = []
+            for i in range(
+                0,
+                len(tokenized["input_ids"]) - self.max_input_length + 1,
+                self.max_input_length,
+            ):
+                batch["input_ids"].append(
+                    tokenized["input_ids"][i : i + self.max_input_length]
+                )
+                batch["special_tokens_mask"].append(
+                    tokenized["special_tokens_mask"][
+                        i : i + self.max_input_length
+                    ]
+                )
+                batch["attention_mask"].append(
+                    tokenized["attention_mask"][i : i + self.max_input_length]
+                )
+                batch["filename"].append(filename)
+                examples["text"].append(
+                    joined_text[i : i + self.max_input_length]
+                )
         else:
             batch = self.tokenizer(
-                examples['text'],
+                examples["text"],
                 padding="max_length",
                 truncation=True,
                 max_length=self.max_input_length,
-                return_special_tokens_mask=True
+                return_special_tokens_mask=True,
             )
 
         if self.callback_functions:
             for callback_function in self.callback_functions:
                 examples[callback_function] = getattr(self, callback_function)(
-                    examples['text']
+                    examples["text"]
                 )
 
         return batch
