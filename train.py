@@ -17,7 +17,7 @@ from transformers.training_args import TrainingArguments
 
 from src.config import BabyLMConfig
 from src.models import load_base_model
-from src.tokenization.tokenizer import load_tokenizer
+from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
 from src.utils.data_preprocessing import DataPreprocessor
 from src.utils.setup import set_seed
