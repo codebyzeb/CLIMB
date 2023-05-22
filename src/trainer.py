@@ -46,7 +46,7 @@ from .evaluator import BlimpEvaluator
 from .objective_curriculum import ObjectiveCurriculum
 
 # Tokenization
-from .tokenization.vocabulary_map import get_vocabulary_map
+from .vocabulary_curriculum.vocabulary_map import get_vocabulary_map
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
