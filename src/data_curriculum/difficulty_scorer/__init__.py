@@ -4,7 +4,8 @@ from transformers import PreTrainedTokenizerFast, Trainer
 from typing_extensions import Protocol, runtime_checkable
 
 # typing imports
-from ..config import DifficultyScorerKwargsType
+from src.config import DifficultyScorerKwargsType
+
 from .base_difficulty_scorer import BaseDifficultyScorer
 
 # importing for registry to register difficulty scorers
@@ -43,7 +44,7 @@ def get_difficulty_scorer(
 
     if difficulty_scorer_name in DIFFICULTY_SCORER_REGISTRY:
         difficulty_scorer = DIFFICULTY_SCORER_REGISTRY[difficulty_scorer_name](
-            **difficulty_scorer_kwargs,
+            **difficulty_scorer_kwargs,  # type: ignore
         )
 
         # If the difficulty scorer needs access to the trainer or the tokenizer, we pass it in

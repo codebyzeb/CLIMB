@@ -6,7 +6,7 @@ import string
 
 from transformers import PreTrainedTokenizerFast
 
-from .config import BabyLMConfig
+from src.config import BabyLMConfig
 
 
 class DataPreprocessor(object):
@@ -64,19 +64,19 @@ class DataPreprocessor(object):
             examples["text"] = []
             for i in range(
                 0,
-                len(tokenized["input_ids"]) - self.max_input_length + 1, # type: ignore
+                len(tokenized["input_ids"]) - self.max_input_length + 1,  # type: ignore
                 self.max_input_length,
             ):
                 batch["input_ids"].append(
-                    tokenized["input_ids"][i : i + self.max_input_length] # type: ignore
+                    tokenized["input_ids"][i : i + self.max_input_length]  # type: ignore
                 )
                 batch["special_tokens_mask"].append(
-                    tokenized["special_tokens_mask"][ # type: ignore
+                    tokenized["special_tokens_mask"][  # type: ignore
                         i : i + self.max_input_length
                     ]
                 )
                 batch["attention_mask"].append(
-                    tokenized["attention_mask"][i : i + self.max_input_length] # type: ignore
+                    tokenized["attention_mask"][i : i + self.max_input_length]  # type: ignore
                 )
                 batch["filename"].append(filename)
                 examples["text"].append(

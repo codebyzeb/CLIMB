@@ -31,17 +31,22 @@ from src.models import load_base_model
 from .config import BabyLMConfig
 
 # Data Sampling and Data Curriculum
-from .dataloader import CurriculumDataLoader
-from .datasampler import CurriculumSampler, DistributedCurriculumSampler
-from .difficulty_scorer import get_difficulty_scorer
+from .data_curriculum.dataloader import CurriculumDataLoader
+from .data_curriculum.datasampler import (
+    CurriculumSampler,
+    DistributedCurriculumSampler,
+)
+from .data_curriculum.difficulty_scorer import get_difficulty_scorer
+from .data_curriculum.pacing_fn import get_pacing_fn
 
 # Model Evaluation
 from .evaluator import BlimpEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
-from .pacing_fn import get_pacing_fn
-from .vocabulary_map import get_vocabulary_map
+
+# Tokenization
+from .tokenization.vocabulary_map import get_vocabulary_map
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -425,17 +430,20 @@ class CustomTrainer(Trainer):
 
         # Additional behavior - evaluate perplexity
         # Get 10_000 samples from the eval dataset
-        eval_subset = self.eval_dataset.select(
+        eval_subset = self.eval_dataset.select(  # type: ignore
             range(
                 0,
-                self.eval_dataset.num_rows,
-                self.eval_dataset.num_rows // 10000,
+                self.eval_dataset.num_rows,  # type: ignore
+                self.eval_dataset.num_rows // 10000,  # type: ignore
             )
         )
         logging.info("Evaluating perplexity...")
         logging.info(f" ** Number of samples: {eval_subset.num_rows}")
         pad_idx = self.tokenizer.pad_token_id
         mask_idx = self.tokenizer.mask_token_id
+
+        assert pad_idx is not None and mask_idx is not None
+
         perplexities = []
         with torch.no_grad():
             for input_ids in eval_subset["input_ids"]:

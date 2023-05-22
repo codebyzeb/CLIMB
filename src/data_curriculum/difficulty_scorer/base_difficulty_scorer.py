@@ -7,6 +7,9 @@ from torch.utils.data import Dataset
 
 
 class BaseDifficultyScorer(metaclass=ABCMeta):
+    def __init__(self):
+        pass
+
     @abstractmethod
     def score_difficulty(
         self,
