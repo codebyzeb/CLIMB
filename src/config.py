@@ -130,13 +130,8 @@ class NGramPerplexityDifficultyScorerParams(Mapping[str, Any]):
     n_gram: int
     update: Optional[int] = None
 
-# @dataclass
-# class ActiveLearningDifficultyScorerParams(NGramPerplexityDifficultyScorerParams):
-    
 
-
-DifficultyScorerKwargsType = Union[NGramPerplexityDifficultyScorerParams,
-                                   None]
+DifficultyScorerKwargsType = Union[NGramPerplexityDifficultyScorerParams, None]
 
 
 @dataclass

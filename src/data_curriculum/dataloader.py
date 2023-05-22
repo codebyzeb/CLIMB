@@ -13,7 +13,7 @@ from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
 from transformers import PreTrainedTokenizerFast
 
 from src.objective_curriculum import ObjectiveCurriculum, StackedCollator
-from src.tokenization.vocabulary_map import BaseVocabularyMap
+from src.vocabulary_curriculum.vocabulary_map import BaseVocabularyMap
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
