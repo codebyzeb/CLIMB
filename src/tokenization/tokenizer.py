@@ -7,7 +7,7 @@ import os
 from datasets import DatasetDict
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
-from .config import BabyLMConfig
+from src.config import BabyLMConfig
 
 logger = logging.getLogger(__name__)
 

@@ -68,7 +68,7 @@ def get_pacing_fn(
                 return starting_difficulty
 
             return float(
-                min(rate * step**2 + starting_difficulty, max_difficulty)
+                min(rate * step ** 2 + starting_difficulty, max_difficulty)
             )
 
         return _quad_function
@@ -81,7 +81,7 @@ def get_pacing_fn(
                 return starting_difficulty
 
             return float(
-                min(rate * step**0.5 + starting_difficulty, max_difficulty)
+                min(rate * step ** 0.5 + starting_difficulty, max_difficulty)
             )
 
         return _root_function

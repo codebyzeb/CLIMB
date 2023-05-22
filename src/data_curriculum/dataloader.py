@@ -12,9 +12,8 @@ from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind
 from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
 from transformers import PreTrainedTokenizerFast
 
-from .objective_curriculum import ObjectiveCurriculum, StackedCollator
-
-from src.vocabulary_map import BaseVocabularyMap
+from src.objective_curriculum import ObjectiveCurriculum, StackedCollator
+from src.tokenization.vocabulary_map import BaseVocabularyMap
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")

@@ -13,13 +13,13 @@ import wandb
 from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
-from transformers import TrainingArguments
+from transformers.training_args import TrainingArguments
 
 from src.config import BabyLMConfig
 from src.models import load_base_model
-from src.preprocessing import DataPreprocessor
-from src.tokenizer import load_tokenizer
+from src.tokenization.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
+from src.utils.data_preprocessing import DataPreprocessor
 from src.utils.setup import set_seed
 
 # type-checks dynamic config file
@@ -60,7 +60,7 @@ def main(cfg: BabyLMConfig):
 
     # Load model
     logger.info("Initializing model")
-    model = load_base_model(cfg)
+    load_base_model(cfg)
 
     # Preprocess data
     logger.info("Preprocessing data")
@@ -103,7 +103,7 @@ def main(cfg: BabyLMConfig):
         max_steps=cfg.trainer.max_training_steps,
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
-        evaluation_strategy="steps",
+        evaluation_strategy="no",
         eval_steps=cfg.trainer.max_training_steps
         // 10,  # eval every 10% of training
         save_steps=cfg.trainer.max_training_steps
@@ -114,7 +114,8 @@ def main(cfg: BabyLMConfig):
         report_to=["wandb"]
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
-        save_strategy="no" if cfg.experiment.dry_run else "steps",
+        # save_strategy="no" if cfg.experiment.dry_run else "steps",
+        save_strategy="steps",
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.dry_run,
         hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
@@ -131,7 +132,6 @@ def main(cfg: BabyLMConfig):
     # Set up trainer
     trainer = CustomTrainer(
         hydra_config=cfg,
-        model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,

@@ -12,7 +12,8 @@ import torch
 # typing
 from transformers import PreTrainedTokenizerFast
 
-from ..config import ObjectiveCurriculumParams
+from src.config import ObjectiveCurriculumParams
+
 from .units import TASK_UNIT_REGISTRY, BaseTaskUnit
 
 
