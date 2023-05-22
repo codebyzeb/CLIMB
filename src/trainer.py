@@ -30,8 +30,10 @@ from src.models import load_base_model
 # typing imports
 from .config import BabyLMConfig
 
+# Curriculum Data Loader (used for both objective and data-driven curriculum)
+from .dataloader import CurriculumDataLoader
+
 # Data Sampling and Data Curriculum
-from .data_curriculum.dataloader import CurriculumDataLoader
 from .data_curriculum.datasampler import (
     CurriculumSampler,
     DistributedCurriculumSampler,
