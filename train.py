@@ -60,7 +60,7 @@ def main(cfg: BabyLMConfig):
 
     # Load model
     logger.info("Initializing model")
-    load_base_model(cfg)
+    model = load_base_model(cfg)
 
     # Preprocess data
     logger.info("Preprocessing data")
@@ -132,6 +132,7 @@ def main(cfg: BabyLMConfig):
     # Set up trainer
     trainer = CustomTrainer(
         hydra_config=cfg,
+        model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,

@@ -147,13 +147,20 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
             for ignore_column in self.loader.ignore_columns:
                 data.pop(ignore_column, None)
 
+
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
             data["input_ids"] = self.loader.vocabulary_map.map_tokens(
                 data["input_ids"], self.loader.global_stepnum
             )
-            data["labels"] = self.loader.vocabulary_map.map_tokens(
-                data["labels"], self.loader.global_stepnum
-            )
+
+            for data_key in data.keys():
+                if data_key.startswith("labels"):
+                    # Map the labels for each objective function to <unk> if they are not in 
+                    # the vocabulary
+
+                    data[data_key] = self.loader.vocabulary_map.map_tokens(
+                        data[data_key], self.loader.global_stepnum
+                    )
 
         return data
