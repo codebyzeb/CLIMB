@@ -1,5 +1,11 @@
+""" Base class for task units. """
+
+import os
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, List, Mapping, Union
+
+from torch import save as torch_save
+from torch import load as torch_load
 
 from torch import Tensor, device
 from torch.nn import Module
@@ -37,6 +43,14 @@ class BaseTaskUnit(metaclass=ABCMeta):
 
         self.device = device
         self.local_rank = local_rank
+
+    @property
+    @abstractmethod
+    def task_name(self) -> str:
+        """
+        Returns the name of the task
+        """
+        ...
 
     @property
     @abstractmethod
@@ -87,3 +101,50 @@ class BaseTaskUnit(metaclass=ABCMeta):
         Given a batch of data, computes the loss for the given task.
         """
         ...
+
+    def save(self, output_dir: str) -> None:
+        """
+        Saves the task unit to the given directory.
+        """
+
+        torch_save(
+            self.task_head.state_dict(),
+            os.path.join(output_dir, f"{self.task_name}_task_head.pt"),
+        )
+
+        torch_save(
+            self.optimizer.state_dict(),
+            os.path.join(output_dir, f"{self.task_name}_optimizer.pt"),
+        )
+        torch_save(
+            self.scheduler.state_dict(),
+            os.path.join(output_dir, f"{self.task_name}_scheduler.pt"),
+        )
+
+
+    def load(self, input_dir: str) -> None:
+        """
+        Loads the task unit from the given directory.
+        """
+
+        self.task_head.load_state_dict(
+            torch_load(
+                os.path.join(input_dir, f"{self.task_name}_task_head.pt"),
+                map_location='cpu',
+            )
+        )
+
+        self.task_head.to(self.device)
+
+        self.optimizer.load_state_dict(
+            torch_load(
+                os.path.join(input_dir, f"{self.task_name}_optimizer.pt"),
+                map_location=self.device,
+            )
+        )
+        self.scheduler.load_state_dict(
+            torch_load(
+                os.path.join(input_dir, f"{self.task_name}_scheduler.pt"),
+                map_location=self.device,
+            )
+        )
