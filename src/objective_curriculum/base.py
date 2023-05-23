@@ -151,16 +151,18 @@ class ObjectiveCurriculum:
         Saves the objective curriculum to a given output directory.
         """
 
-        for unit_name, unit in self.units.items():
-            torch.save(
-                unit.task_head.state_dict(),
-                os.path.join(output_dir, f"{unit_name}_task_head.pt"),
-            )
-            torch.save(
-                unit.optimizer.state_dict(),
-                os.path.join(output_dir, f"{unit_name}_optimizer.pt"),
-            )
-            torch.save(
-                unit.scheduler.state_dict(),
-                os.path.join(output_dir, f"{unit_name}_scheduler.pt"),
-            )
+        for unit in self.units.values():
+            unit.save(output_dir)
+
+    def load(self, input_dir: str) -> None:
+        """
+        Loads the objective curriculum from a given checkpoint defined by input directory.
+        NOTE: For each unit, the task head, optimizer and scheduler are loaded, and the files
+        associated with the state dicts are expected to be named as follows:
+            * {unit_name}_task_head.pt
+            * {unit_name}_optimizer.pt
+            * {unit_name}_scheduler.pt
+        """
+
+        for unit in self.units.values():
+            unit.load(input_dir)

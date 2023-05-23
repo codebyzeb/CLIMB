@@ -103,7 +103,7 @@ class CustomTrainer(Trainer):
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
         """
-
+        
         super().__init__(args=args, **kwargs)
 
         self.hydra_config = hydra_config
@@ -535,21 +535,40 @@ class CustomTrainer(Trainer):
         """
         super()._save(output_dir=output_dir, state_dict=state_dict)
 
-        # NOTE: We need to save the objective curriculum state as well
-        output_dir = (
-            output_dir if output_dir is not None else self.args.output_dir
-        )
-
-        mlm_model_dir = os.path.join(output_dir, "lm_model")
-        task_heads_dir = os.path.join(output_dir, "task_heads")
-        os.makedirs(mlm_model_dir, exist_ok=True)
-        os.makedirs(task_heads_dir, exist_ok=True)
-
-        # save the full language model
-        lm_model = self._initialize_full_lm_model()
-        lm_model.save_pretrained(mlm_model_dir)
-
-        # if on main rank save objective curriculum too
-
         if self.args.should_save:
+            # Saving should be done only on the main process
+
+            # NOTE: We need to save the objective curriculum state as well
+            output_dir = (
+                output_dir if output_dir is not None else self.args.output_dir
+            )
+
+            mlm_model_dir = os.path.join(output_dir, "lm_model")
+            task_heads_dir = os.path.join(output_dir, "task_heads")
+            os.makedirs(mlm_model_dir, exist_ok=True)
+            os.makedirs(task_heads_dir, exist_ok=True)
+
+            # save the full language model
+            lm_model = self._initialize_full_lm_model()
+            lm_model.save_pretrained(mlm_model_dir)
+
             self.objective_curriculum.save(output_dir=task_heads_dir)
+
+
+    def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None):
+        """ 
+        Loads in the base model as well as the task heads from the checkpoint. For each task head,
+        we also load in the optimizer state and the scheduler state (For the base model this 
+        is handled by the Trainer class at a later point).
+
+        Args: 
+            * resume_from_checkpoint (str): The path to the checkpoint to resume from.
+            * model (Optional[PreTrainedModel]): The model to load the checkpoint into. If None,
+        """
+
+        super()._load_from_checkpoint(resume_from_checkpoint, model)
+
+
+        
+    
+    

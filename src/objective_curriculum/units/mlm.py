@@ -76,6 +76,13 @@ class MLMTask(BaseTaskUnit):
         self._loss_fn = CrossEntropyLoss()
 
     @property
+    def task_name(self) -> str:
+        """
+        Returns the name of the task
+        """
+        return "mlm"
+
+    @property
     def objective_collator(self):
         """
         Returns the instance objective collator.
@@ -118,6 +125,12 @@ class MLMTask(BaseTaskUnit):
         Given a batch of data, computes the cross entropy loss for the masked language modeling
         task.
         """
+
+        sum_of_weights = 0.0
+        for param in self.task_head.parameters():
+            sum_of_weights += param.sum()
+
+        print(f"Sum of weights: {sum_of_weights}")
 
         # compute the logits
         logits = self.task_head(base_model_hidden_stats).transpose(-1, -2)
