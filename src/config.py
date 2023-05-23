@@ -91,15 +91,7 @@ class ObjectiveCurriculumUnitParams(DictConfig):
     scheduler_params: Optional[Dict[str, Any]] = field(default_factory=dict)
 
     # Additional optional kwargs dependent on the objective curriculum unit
-    num_mask_patterns: Optional[int] = None
-    mask_pattern_size: Optional[int] = None
-    probabilistic_masking: Optional[bool] = None
-    leave_unmasked_prob_start: Optional[float] = None
-    leave_unmasked_prob: Optional[float] = None
-    random_token_prob: Optional[float] = None
-    consecutive_masking: Optional[bool] = None
-    lexical_class: Optional[List[str]] = None
-
+    optional_kwargs: Optional[Dict[str, Any]] = field(default_factory=dict)
 
 @dataclass
 class ObjectiveCurriculumParams(DictConfig):
