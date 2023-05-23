@@ -103,7 +103,7 @@ def main(cfg: BabyLMConfig):
         max_steps=cfg.trainer.max_training_steps,
         warmup_steps=cfg.trainer.num_warmup_steps,
         seed=cfg.experiment.seed,
-        evaluation_strategy="no",
+        evaluation_strategy="steps",
         eval_steps=cfg.trainer.max_training_steps
         // 10,  # eval every 10% of training
         save_steps=cfg.trainer.max_training_steps
@@ -114,8 +114,7 @@ def main(cfg: BabyLMConfig):
         report_to=["wandb"]
         if not cfg.experiment.dry_run
         else None,  # wandb deactivated for dry runs
-        # save_strategy="no" if cfg.experiment.dry_run else "steps",
-        save_strategy="steps",
+        save_strategy="no" if cfg.experiment.dry_run else "steps",
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.dry_run,
         hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
@@ -127,6 +126,7 @@ def main(cfg: BabyLMConfig):
         dataloader_drop_last=cfg.data_curriculum
         is not None,  # NOTE: This is to ensure that the curriculum is not broken on the last batch
         remove_unused_columns=False,
+        load_best_model_at_end=not cfg.experiment.dry_run,
     )
 
     # Set up trainer
@@ -139,6 +139,11 @@ def main(cfg: BabyLMConfig):
         tokenizer=tokenizer,
     )
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
+
+    if not cfg.experiment.dry_run:
+        # passing load_best_model_at_end=True to the trainer will load the best model at 
+        # the end of training, so we don't need to do it here
+        trainer.save_model(output_dir=os.path.join(training_args.output_dir, "best_model"))
 
 
 if __name__ == "__main__":

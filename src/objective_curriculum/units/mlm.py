@@ -126,12 +126,6 @@ class MLMTask(BaseTaskUnit):
         task.
         """
 
-        sum_of_weights = 0.0
-        for param in self.task_head.parameters():
-            sum_of_weights += param.sum()
-
-        print(f"Sum of weights: {sum_of_weights}")
-
         # compute the logits
         logits = self.task_head(base_model_hidden_stats).transpose(-1, -2)
 
