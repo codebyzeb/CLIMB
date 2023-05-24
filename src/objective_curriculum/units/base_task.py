@@ -2,7 +2,7 @@
 
 import os
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Mapping, Union
+from typing import Any, Callable, Dict, List, Mapping, Union, Optional
 
 from torch import save as torch_save
 from torch import load as torch_load
@@ -95,10 +95,20 @@ class BaseTaskUnit(metaclass=ABCMeta):
 
     @abstractmethod
     def compute_loss(
-        self, base_model_hidden_stats: Tensor, inputs: Dict[str, Tensor]
+        self,
+        base_model_hidden_stats: Tensor,
+        inputs: Dict[str, Tensor],
+        override_lables: Optional[Tensor] = None,
     ) -> Tensor:
         """
         Given a batch of data, computes the loss for the given task.
+
+        Args:
+            * base_model_hidden_stats (Tensor): The hidden states of the base model
+            * inputs (Dict[str, Tensor]): The inputs to the task head
+            * override_lables (Optional[Tensor], optional): Overrides the labels for the task, 
+                usually we assume that the labels are in the inputs, but in some cases we may want
+                to override the labels. Defaults to None.
         """
         ...
 

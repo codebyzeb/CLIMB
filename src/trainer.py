@@ -104,12 +104,12 @@ class CustomTrainer(Trainer):
                 Trainer class.
         """
         
-        super().__init__(args=args, **kwargs)
-
         self.hydra_config = hydra_config
 
         self.experiment_group = hydra_config.experiment.group
         self.experiment_name = hydra_config.experiment.name
+
+        super().__init__(args=args, **kwargs)
 
         self.objective_curriculum_cfg = hydra_config.objective_curriculum
         self.data_curriculum_cfg = hydra_config.data_curriculum
@@ -471,8 +471,24 @@ class CustomTrainer(Trainer):
                 labels = repeat_tensor.masked_fill(
                     masked_input != mask_idx, -100
                 )
-                loss = self.model(masked_input, labels=labels).loss
+
+                # Running inference on the model with the masked input via Base Model -> MLM Head
+
+                base_model_outputs = self.model(
+                    input_ids=masked_input
+                )
+                base_model_hidden_states = base_model_outputs[0]
+
+                # NOTE: The 'mlm' unit is always in the objective curriculum (checked by 
+                # ObjectiveCurriculum.__init__)
+                loss = self.objective_curriculum.units['mlm'].compute_loss(
+                    base_model_hidden_states, 
+                    {}, # No Input dict required for perplexity, just labels
+                    override_lables=labels
+                )
+
                 perplexities.append(torch.exp(loss).item())
+
         metrics["perplexity_mean"] = torch.mean(
             torch.tensor(perplexities)
         ).item()
@@ -483,8 +499,10 @@ class CustomTrainer(Trainer):
         # Additional behaviour - evaluate on BLIMP
         logging.info("Evaluating on BLIMP...")
         self.save_model(self.args.output_dir, _internal_call=True)
-        self.save_model(_internal_call=True)
-        evaluator = BlimpEvaluator(self.args.output_dir)
+
+        inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
+
+        evaluator = BlimpEvaluator(inference_model_dir)
         metrics = evaluator()
         for key in list(metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
