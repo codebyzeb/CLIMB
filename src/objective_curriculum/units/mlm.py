@@ -1,6 +1,6 @@
 """ Sets up the masked language modeling base task. """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from torch import Tensor
 from torch.nn import CrossEntropyLoss
@@ -119,7 +119,10 @@ class MLMTask(BaseTaskUnit):
         return self._scheduler
 
     def compute_loss(
-        self, base_model_hidden_stats: Tensor, inputs: Dict[str, Tensor]
+        self,
+        base_model_hidden_stats: Tensor,
+        inputs: Dict[str, Tensor],
+        override_lables: Optional[Tensor] = None,
     ) -> Tensor:
         """
         Given a batch of data, computes the cross entropy loss for the masked language modeling
@@ -129,7 +132,9 @@ class MLMTask(BaseTaskUnit):
         # compute the logits
         logits = self.task_head(base_model_hidden_stats).transpose(-1, -2)
 
+        labels = override_lables if override_lables is not None else inputs["labels_mlm"]
+
         # compute the loss
-        loss = self._loss_fn(logits, inputs["labels_mlm"])
+        loss = self._loss_fn(logits, labels)
 
         return loss
