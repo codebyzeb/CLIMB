@@ -3,22 +3,28 @@ NGramPerplexityScorer class defines a difficulty scorer that scores the difficul
 of a dataset based on the perplexity of a n-gram model trained on the dataset.
 """
 
+from __future__ import annotations
 
 import logging
-from abc import abstractmethod
-from typing import Any, Generator, List, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Generator, List, Sequence, Tuple, Union
 
 import numpy as np
 import torch
 
 # typing imports
 from datasets import Dataset
+from transformers import PreTrainedTokenizerFast
+
+if TYPE_CHECKING:
+    # avoid circular imports
+    from src.trainer import CustomTrainer
 
 # NLTK Package provides functionality for n-gram models
 from nltk.lm import MLE
 from nltk.util import everygrams
 from tqdm import tqdm
-from transformers import PreTrainedTokenizerFast, Trainer
+
+from src.utils.inference import compute_trainer_perplexity
 
 from .base_difficulty_scorer import BaseDifficultyScorer
 from .registry import register_difficulty_scorer
@@ -28,10 +34,6 @@ logger = logging.getLogger("DifficultyScorer")
 
 class PerplexityBaseClass(BaseDifficultyScorer):
     """a class encapsulating shared logic between SelfPerplexityScorer and NGramPerplexityScorer"""
-
-    @abstractmethod
-    def _perplexity(self, example: Sequence[str]):
-        raise NotImplementedError
 
     @property
     def tokenizer(self) -> Union[PreTrainedTokenizerFast, None]:
@@ -113,8 +115,8 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         self.lm = MLE(self.n_gram)
         self.lm.fit(train_data_n_grams, train_vocab)
 
-    def _perplexity(
-        self, example: Tuple[Sequence[str], Generator[Tuple[str], Any, None]]
+    def _compute_ngram_perplexity(
+        self, example: Generator[Tuple[str], Any, None]
     ):
         return self.lm.perplexity(example)
 
@@ -166,7 +168,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
 
-                    perplexity = self._perplexity(n_gram)  # type: ignore
+                    perplexity = self._compute_ngram_perplexity(n_gram)
                     difficulty_scores.append(perplexity)
 
                     curr_indices_idx += 1
@@ -212,58 +214,12 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         return state
 
     @property
-    def trainer(self) -> Union[Trainer, None]:
+    def trainer(self) -> Union[CustomTrainer, None]:
         return self._trainer
 
     @trainer.setter
-    def trainer(self, trainer: Trainer):
+    def trainer(self, trainer: CustomTrainer):
         self._trainer = trainer
-
-    def _perplexity(self, input_ids: List[int]) -> float:
-        """
-        Args:
-            * input_ids: a list of input ids
-        Returns:
-            * perplexity (float): The perplexity of the n-gram
-
-        """
-
-        # flatten the list of list of input ids
-        # input_ids = [id for ngram in input_ids for id in ngram]
-
-        assert self.tokenizer is not None and self.trainer is not None
-
-        mask_idx = self.tokenizer.mask_token_id
-        pad_idx = self.tokenizer.pad_token_id
-
-        assert (
-            mask_idx is not None and pad_idx is not None
-        ), "The tokenizer must have a mask token and a pad token"
-
-        # convert the input IDs to a PyTorch tensor
-        input_tensor = torch.tensor([input_ids])
-        # set all pad tokens to -100, the model will exclude them from the loss
-        input_tensor = torch.where(input_tensor != pad_idx, input_tensor, -100)
-
-        # prepare masks and input (send to GPU if available)
-        repeat_tensor = input_tensor.repeat(input_tensor.size(-1) - 2, 1).to(
-            self.trainer.args.device
-        )
-        mask = (
-            torch.ones(input_tensor.size(-1) - 1)
-            .diag(1)[:-2]
-            .to(self.trainer.args.device)
-        )
-        masked_input = repeat_tensor.masked_fill(mask == 1, mask_idx)
-        labels = repeat_tensor.masked_fill(masked_input != mask_idx, -100)
-
-        self.trainer.model.eval()
-
-        outputs = self.trainer.model(masked_input, labels=labels)
-        loss = outputs.loss.item()
-        perplexity = torch.exp(torch.tensor(loss)).item()
-
-        return perplexity
 
     def score_difficulty(
         self,
@@ -278,9 +234,11 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         # if this is the initial step, use the ngram model class's method
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
             self.ngram_model.tokenizer = self.tokenizer
-            return self.ngram_model.score_difficulty(
+
+            self._difficulty_scores = self.ngram_model.score_difficulty(
                 dataset, indices, global_stepnum, max_difficulty_percentile
             )
+            return self._difficulty_scores
 
         else:
             if global_stepnum % self.update == 0:
@@ -294,22 +252,28 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 # assigned to the current process)
                 curr_indices_idx = 0
 
-                for _idx, ex in enumerate(tqdm(dataset)):
-                    if _idx == indices[curr_indices_idx]:
-                        # use map to tokenize each ngram and convert to input ids
-                        input_ids = ex["input_ids"]  # type: ignore
+                with torch.no_grad():
 
-                        difficulty_scores.append(self._perplexity(input_ids))
+                    for _idx, ex in enumerate(tqdm(dataset)):
+                        if _idx == indices[curr_indices_idx]:
+                            # use map to tokenize each ngram and convert to input ids
+                            input_ids = ex["input_ids"]  # type: ignore
 
-                        curr_indices_idx += 1
+                            sample_perplexity = compute_trainer_perplexity(
+                                input_ids, self.tokenizer, self.trainer
+                            )
 
-                        if curr_indices_idx == len(indices):
-                            break
+                            difficulty_scores.append(sample_perplexity)
 
-                self._difficulty_scores = (
-                    self.convert_difficulty_scores_to_percentiles(
-                        difficulty_scores, max_difficulty_percentile
+                            curr_indices_idx += 1
+
+                            if curr_indices_idx == len(indices):
+                                break
+
+                    self._difficulty_scores = (
+                        self.convert_difficulty_scores_to_percentiles(
+                            difficulty_scores, max_difficulty_percentile
+                        )
                     )
-                )
 
-            return self._difficulty_scores
+        return self._difficulty_scores

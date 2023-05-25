@@ -26,6 +26,7 @@ from transformers.utils import get_full_repo_name
 
 # Model Loading
 from src.models import load_base_model
+from src.utils.inference import compute_trainer_perplexity
 
 # typing imports
 from .config import BabyLMConfig
@@ -446,43 +447,12 @@ class CustomTrainer(Trainer):
         perplexities = []
         with torch.no_grad():
             for input_ids in eval_subset["input_ids"]:
-                # Remove padding tokens
-                pad_loc = (
-                    input_ids.index(pad_idx)
-                    if input_ids[-1] == pad_idx
-                    else len(input_ids)
-                )
-                input_ids = input_ids[:pad_loc]
 
-                # Prepare masks and input
-                input_tensor = torch.tensor(input_ids).to(self.args.device)
-                repeat_tensor = input_tensor.repeat(
-                    input_tensor.size(-1) - 2, 1
-                )
-                mask = (
-                    torch.ones(input_tensor.size(-1) - 1)
-                    .to(self.args.device)
-                    .diag(1)[:-2]
-                )
-                masked_input = repeat_tensor.masked_fill(mask == 1, mask_idx)
-                labels = repeat_tensor.masked_fill(
-                    masked_input != mask_idx, -100
+                sample_perplexity = compute_trainer_perplexity(
+                    input_ids, self.tokenizer, self
                 )
 
-                # Running inference on the model with the masked input via Base Model -> MLM Head
-
-                base_model_outputs = self.model(input_ids=masked_input)
-                base_model_hidden_states = base_model_outputs[0]
-
-                # NOTE: The 'mlm' unit is always in the objective curriculum (checked by
-                # ObjectiveCurriculum.__init__)
-                loss = self.objective_curriculum.units["mlm"].compute_loss(
-                    base_model_hidden_states,
-                    {},  # No Input dict required for perplexity, just labels
-                    override_lables=labels,
-                )
-
-                perplexities.append(torch.exp(loss).item())
+                perplexities.append(sample_perplexity)
 
         metrics["perplexity_mean"] = torch.mean(
             torch.tensor(perplexities)
