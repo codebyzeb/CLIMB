@@ -117,13 +117,13 @@ class PacingFunctionParams(Mapping[str, Any]):
 
 # Difficulty Scorer Parameters
 @dataclass
-class NGramPerplexityDifficultyScorerParams(Mapping[str, Any]):
+class PerplexityDifficultyScorerParams(Mapping[str, Any]):
     # n-gram perplexity parameters
     n_gram: int
     update: Optional[int] = None
 
 
-DifficultyScorerKwargsType = Union[NGramPerplexityDifficultyScorerParams, None]
+DifficultyScorerKwargsType = Union[PerplexityDifficultyScorerParams, None]
 
 
 @dataclass
