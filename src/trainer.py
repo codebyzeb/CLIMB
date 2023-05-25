@@ -30,9 +30,6 @@ from src.models import load_base_model
 # typing imports
 from .config import BabyLMConfig
 
-# Curriculum Data Loader (used for both objective and data-driven curriculum)
-from .dataloader import CurriculumDataLoader
-
 # Data Sampling and Data Curriculum
 from .data_curriculum.datasampler import (
     CurriculumSampler,
@@ -40,6 +37,9 @@ from .data_curriculum.datasampler import (
 )
 from .data_curriculum.difficulty_scorer import get_difficulty_scorer
 from .data_curriculum.pacing_fn import get_pacing_fn
+
+# Curriculum Data Loader (used for both objective and data-driven curriculum)
+from .dataloader import CurriculumDataLoader
 
 # Model Evaluation
 from .evaluator import BlimpEvaluator
@@ -103,7 +103,7 @@ class CustomTrainer(Trainer):
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
         """
-        
+
         self.hydra_config = hydra_config
 
         self.experiment_group = hydra_config.experiment.group
@@ -335,14 +335,11 @@ class CustomTrainer(Trainer):
 
         train_sampler = self._get_train_sampler()
 
-        # TODO: We're also removing the "filename" column here, might want to find a way to keep it
-        train_dataset = self.train_dataset.remove_columns(["text", "filename"])  # type: ignore
-
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these
         # ignore columns to the dataloader so that they are not included in the batch, but we
         # might want to use this information when generating the objective.
-        ignore_columns = self._get_ignore_columns(train_dataset)
+        ignore_columns = self._get_ignore_columns(self.train_dataset)
 
         assert (
             self.tokenizer is not None
@@ -375,7 +372,7 @@ class CustomTrainer(Trainer):
             tokenizer=self.tokenizer,
             vocabulary_map=vocabulary_map,
             ignore_columns=ignore_columns,
-            dataset=train_dataset,
+            dataset=self.train_dataset,
             sampler=train_sampler,
             batch_size=self._train_batch_size,
             drop_last=self.args.dataloader_drop_last,
@@ -474,17 +471,15 @@ class CustomTrainer(Trainer):
 
                 # Running inference on the model with the masked input via Base Model -> MLM Head
 
-                base_model_outputs = self.model(
-                    input_ids=masked_input
-                )
+                base_model_outputs = self.model(input_ids=masked_input)
                 base_model_hidden_states = base_model_outputs[0]
 
-                # NOTE: The 'mlm' unit is always in the objective curriculum (checked by 
+                # NOTE: The 'mlm' unit is always in the objective curriculum (checked by
                 # ObjectiveCurriculum.__init__)
-                loss = self.objective_curriculum.units['mlm'].compute_loss(
-                    base_model_hidden_states, 
-                    {}, # No Input dict required for perplexity, just labels
-                    override_lables=labels
+                loss = self.objective_curriculum.units["mlm"].compute_loss(
+                    base_model_hidden_states,
+                    {},  # No Input dict required for perplexity, just labels
+                    override_lables=labels,
                 )
 
                 perplexities.append(torch.exp(loss).item())
@@ -572,21 +567,15 @@ class CustomTrainer(Trainer):
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
 
-
     def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None):
-        """ 
+        """
         Loads in the base model as well as the task heads from the checkpoint. For each task head,
-        we also load in the optimizer state and the scheduler state (For the base model this 
+        we also load in the optimizer state and the scheduler state (For the base model this
         is handled by the Trainer class at a later point).
 
-        Args: 
+        Args:
             * resume_from_checkpoint (str): The path to the checkpoint to resume from.
             * model (Optional[PreTrainedModel]): The model to load the checkpoint into. If None,
         """
 
         super()._load_from_checkpoint(resume_from_checkpoint, model)
-
-
-        
-    
-    

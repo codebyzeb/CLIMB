@@ -124,10 +124,6 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
                 },
             )
 
-        logger.info(
-            f"(Curriculum Learning) Setting curriculum at step: {self.loader.global_stepnum}"
-        )
-
         self._dataset_fetcher = _DatasetKind.create_fetcher(
             self._dataset_kind,
             self._dataset,
@@ -147,7 +143,6 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
             for ignore_column in self.loader.ignore_columns:
                 data.pop(ignore_column, None)
 
-
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
             data["input_ids"] = self.loader.vocabulary_map.map_tokens(
@@ -156,7 +151,7 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
 
             for data_key in data.keys():
                 if data_key.startswith("labels"):
-                    # Map the labels for each objective function to <unk> if they are not in 
+                    # Map the labels for each objective function to <unk> if they are not in
                     # the vocabulary
 
                     data[data_key] = self.loader.vocabulary_map.map_tokens(

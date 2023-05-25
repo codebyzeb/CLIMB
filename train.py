@@ -6,15 +6,14 @@ import os
 # config-related imports
 import hydra
 
-# wandb for logging metrics
-import wandb
-
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from transformers.training_args import TrainingArguments
 
+# wandb for logging metrics
+import wandb
 from src.config import BabyLMConfig
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
@@ -66,12 +65,20 @@ def main(cfg: BabyLMConfig):
     logger.info("Preprocessing data")
 
     data_preprocessor = DataPreprocessor(cfg, tokenizer)
+
     train_dataset = dataset["train"].map(
-        data_preprocessor, batched=True, num_proc=64
+        data_preprocessor,
+        batched=True,
+        num_proc=64,
+        remove_columns=dataset["train"].column_names,
     )
+
     data_preprocessor.concat_input = False
     eval_dataset = dataset["validation"].map(
-        data_preprocessor, batched=True, num_proc=64
+        data_preprocessor,
+        batched=True,
+        num_proc=64,
+        remove_columns=dataset["validation"].column_names,
     )
 
     # Setting up wandb
@@ -141,9 +148,11 @@ def main(cfg: BabyLMConfig):
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
 
     if not cfg.experiment.dry_run:
-        # passing load_best_model_at_end=True to the trainer will load the best model at 
+        # passing load_best_model_at_end=True to the trainer will load the best model at
         # the end of training, so we don't need to do it here
-        trainer.save_model(output_dir=os.path.join(training_args.output_dir, "best_model"))
+        trainer.save_model(
+            output_dir=os.path.join(training_args.output_dir, "best_model")
+        )
 
 
 if __name__ == "__main__":
