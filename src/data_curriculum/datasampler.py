@@ -1,7 +1,6 @@
 """ Module for custom data samplers. """
 
 import copy
-import logging
 from typing import Callable, Iterator, Sequence, Union
 
 # typing imports
@@ -12,8 +11,6 @@ from torch.utils.data.distributed import DistributedSampler
 from typing_extensions import Protocol
 
 from .difficulty_scorer import BaseDifficultyScorer
-
-logger = logging.getLogger(__name__)
 
 
 class CurriculumIterTypeProtocol(Protocol):
