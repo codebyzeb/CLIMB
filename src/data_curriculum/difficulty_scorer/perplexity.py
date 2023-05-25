@@ -62,7 +62,7 @@ class PerplexityBaseClass(BaseDifficultyScorer):
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(PerplexityBaseClass):
-    def __init__(self, n_gram: int):
+    def __init__(self, n_gram: int, **kwargs):
         """
         Initializes the n-gram perplexity scorer.
 
