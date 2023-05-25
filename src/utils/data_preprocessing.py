@@ -43,45 +43,39 @@ class DataPreprocessor(object):
 
         # concatenate the input text if concat_input is True then split into chunks of max_input_length
         if self.concat_input:
-            joined_text = " ".join(examples["text"])
-            # Note: we assume that all examples have the same filename
-            # TODO: this is a hacky way to get the filename, fix this
-            filename = examples["filename"][0]
-            tokenized = self.tokenizer(
-                joined_text,
-                padding="max_length",
-                max_length=self.max_input_length,
-                truncation=False,
-                return_special_tokens_mask=True,
-            )
 
             batch = {
                 "input_ids": [],
                 "special_tokens_mask": [],
                 "attention_mask": [],
-                "filename": [],
             }
-            examples["text"] = []
-            for i in range(
-                0,
-                len(tokenized["input_ids"]) - self.max_input_length + 1,  # type: ignore
-                self.max_input_length,
-            ):
-                batch["input_ids"].append(
-                    tokenized["input_ids"][i : i + self.max_input_length]  # type: ignore
+
+            for example_text in examples["text"]:
+                tokenized_inputs = self.tokenizer(
+                    example_text,
+                    padding="max_length",
+                    max_length=self.max_input_length,
+                    truncation=False,
+                    return_special_tokens_mask=True,
                 )
-                batch["special_tokens_mask"].append(
-                    tokenized["special_tokens_mask"][  # type: ignore
-                        i : i + self.max_input_length
-                    ]
-                )
-                batch["attention_mask"].append(
-                    tokenized["attention_mask"][i : i + self.max_input_length]  # type: ignore
-                )
-                batch["filename"].append(filename)
-                examples["text"].append(
-                    joined_text[i : i + self.max_input_length]
-                )
+
+                truncated_length = (len(tokenized_inputs["input_ids"]) // self.max_input_length) * self.max_input_length  # type: ignore
+
+                for i in range(
+                    0,
+                    truncated_length,
+                    self.max_input_length,
+                ):
+                    batch["input_ids"].append(
+                        tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["special_tokens_mask"].append(
+                        tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["attention_mask"].append(
+                        tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
+                    )
+
         else:
             batch = self.tokenizer(
                 examples["text"],
