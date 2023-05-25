@@ -29,11 +29,11 @@ from src.utils.inference import compute_trainer_perplexity
 from .base_difficulty_scorer import BaseDifficultyScorer
 from .registry import register_difficulty_scorer
 
-logger = logging.getLogger("DifficultyScorer")
+data_cl_logger = logging.getLogger("Data Curriculum")
 
 
 class PerplexityBaseClass(BaseDifficultyScorer):
-    """a class encapsulating shared logic between SelfPerplexityScorer and NGramPerplexityScorer"""
+    """A class encapsulating shared logic between SelfPerplexityScorer and NGramPerplexityScorer"""
 
     @property
     def tokenizer(self) -> Union[PreTrainedTokenizerFast, None]:
@@ -70,7 +70,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             * n_gram (int): The n-gram to use for the n-gram model
         """
 
-        logger.info("Initializing n-gram perplexity scorer")
+        data_cl_logger.info("Initializing n-gram perplexity scorer")
 
         self.n_gram = n_gram
         self._tokenizer = None
@@ -89,7 +89,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             self.tokenizer is not None
         ), "The tokenizer must be set before training the n-gram model"
 
-        logger.info("Training n-gram model")
+        data_cl_logger.info("Training n-gram model")
 
         tokenized_dataset = dataset.map(
             lambda x: {
@@ -163,7 +163,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             # assigned to the current process)
             curr_indices_idx = 0
 
-            logger.info("Evaluating perplexity of n-grams")
+            data_cl_logger.info("Evaluating perplexity [NGram Model]")
 
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
@@ -195,7 +195,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             * update (int): The number of steps to wait before updating the n-gram model
         """
 
-        logger.info(
+        data_cl_logger.info(
             "Initializing active learning perplexity difficulty scorer"
         )
 
@@ -243,7 +243,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         else:
             if global_stepnum % self.update == 0:
 
-                logger.info(
+                data_cl_logger.info(
                     f"Recalculating sample weights using model at step {global_stepnum}"
                 )
                 difficulty_scores: Sequence[float] = []
@@ -253,6 +253,9 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 curr_indices_idx = 0
 
                 with torch.no_grad():
+                    data_cl_logger.info(
+                        "Evaluating perplexity [Trainer Model]"
+                    )
 
                     for _idx, ex in enumerate(tqdm(dataset)):
                         if _idx == indices[curr_indices_idx]:
