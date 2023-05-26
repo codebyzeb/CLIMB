@@ -12,6 +12,20 @@ from src.config import BabyLMConfig
 
 logger = logging.getLogger(__name__)
 
+POS_TAG_MAP = {
+    'NOUN' : 0,
+    'VERB' : 1,
+    'ADJ' : 2,
+    'ADV' : 3,
+    'PRON' : 4,
+    'DET' : 5,
+    'ADP' : 6,
+    'NUM' : 7,
+    'CONJ' : 8,
+    'PRT' : 9,
+    '.' : 10,
+    'X' : 11
+}
 
 class DataPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
@@ -26,92 +40,13 @@ class DataPreprocessor(object):
         self.max_input_length = cfg.data_preprocessing.max_input_length
         self.concat_input = cfg.data_preprocessing.concat_input
         self.callback_functions = cfg.data_preprocessing.callback_functions
-        self.pos_tag_path = cfg.data_preprocessing.pos_tag_path
 
         self.tokenizer = tokenizer
-
-        # load pos tags
-        self.max_pos_tag_id = 0
-        if self.pos_tag_path is not None:
-            self.load_pos_tags(self.pos_tag_path)
-        else:
-            self.pos_tag_dict = None
-
-    def load_pos_tags(self, pos_tag_path):
-        """
-        Loads the POS tags from the specified path
-        """
-        pos_tag_dict = {}
-        pos_tag_to_id = {}
-        next_line_is_word = True
-        next_line_is_pos = False
-        word = ""
-        with open(pos_tag_path, "r") as f:
-            for line in f:
-                if next_line_is_word:
-                    word = line.strip()
-                    next_line_is_word = False
-                    next_line_is_pos = True
-                    continue
-                elif next_line_is_pos:
-                    tag = line.strip().split("   ")[-1]
-                    next_line_is_pos = False
-                    if tag not in pos_tag_to_id:
-                        pos_tag_to_id[tag] = len(pos_tag_to_id)
-                        self.max_pos_tag_id = len(pos_tag_to_id)
-                    pos_tag_dict[word] = pos_tag_to_id[tag]
-                elif line == "\n":
-                    next_line_is_word = True
-                    continue
-
-        self.pos_tag_dict = pos_tag_dict
 
     ### --- Callback functions --- ###
 
     # NOTE: The function names of callbacks must match the names in the data preprocessing
     # callback_functions list (sepcified in the config file)
-
-    def pos_tagging(self, examples):
-        """
-        Adds POS tags to the input text
-        """
-
-        if self.pos_tag_dict is None:
-            raise ValueError(
-                "pos_tagging callback function specified but pos_tag_path is None"
-            )
-
-        pos_tags = []
-
-        for _, line in enumerate(examples["text"]):
-            # Get the words without splitting into subwords
-            words = self.tokenizer.backend_tokenizer.pre_tokenizer.pre_tokenize_str(
-                line
-            )
-            words = [word[0].replace("Ġ", "") for word in words]
-            subwords = self.tokenizer.tokenize(line)
-            subwords = [subword.replace("Ġ", "") for subword in subwords]
-
-            # get the POS tags for each word and align with subwords
-            tags = []
-            word = words[0]
-            word_start = 0
-            word_idx = 0
-            for subword in subwords:
-                if word in self.pos_tag_dict:
-                    tags.append(self.pos_tag_dict[word])
-                else:
-                    # POS ID for unknown words
-                    tags.append(self.max_pos_tag_id)
-                if word[word_start:].startswith(subword):
-                    word_start += len(subword)
-                    if word_start == len(word):
-                        word_idx += 1
-                        word_start = 0
-                        word = words[word_idx] if word_idx < len(words) else ""
-            pos_tags.append(tags)
-
-        return pos_tags
 
     ### --- Callback functions --- ###
 
@@ -129,16 +64,35 @@ class DataPreprocessor(object):
                 "input_ids": [],
                 "special_tokens_mask": [],
                 "attention_mask": [],
+                "pos_tags": [],
             }
 
-            for example_text in examples["text"]:
+            for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]): # type: ignore
                 tokenized_inputs = self.tokenizer(
                     example_text,
                     padding="max_length",
                     max_length=self.max_input_length,
                     truncation=False,
                     return_special_tokens_mask=True,
+                    return_offsets_mapping=True,
                 )
+
+                subwords = [example_text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]] # type: ignore
+                tag_pairs = [tag_pair.split('__<label>__') for tag_pair in example_tagged_text.strip().split(" ") if tag_pair != '']
+                # Iterate through subwords and assign POS tags, hopefully they should match up, since
+                # the subwords in example_tagged_text were extracted by the tokenizer in the first place
+                pos_tags = []
+                i = 0
+                for subword in subwords:
+                    # This indicates that the subword is a special token
+                    if subword == '' or subword == '\n':
+                        pos_tags.append(POS_TAG_MAP['X'])
+                        continue
+                    # Check if we're at the start of the next word
+                    if i + 1 < len(tag_pairs) and tag_pairs[i+1][0].startswith(subword):
+                        i += 1
+                    # Keep using the POS tag of the current word
+                    pos_tags.append(POS_TAG_MAP[tag_pairs[i][1]] if tag_pairs[i][1] in POS_TAG_MAP else POS_TAG_MAP['X']) 
 
                 truncated_length = (len(tokenized_inputs["input_ids"]) // self.max_input_length) * self.max_input_length  # type: ignore
 
@@ -155,6 +109,9 @@ class DataPreprocessor(object):
                     )
                     batch["attention_mask"].append(
                         tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["pos_tags"].append(
+                        pos_tags[i : i + self.max_input_length]
                     )
 
         else:

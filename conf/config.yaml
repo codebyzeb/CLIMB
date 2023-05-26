@@ -18,8 +18,6 @@ data_preprocessing:
   include_punctuation: True
   concat_input: True
   max_input_length: 128
-  callback_functions: ['pos_tagging']
-  pos_tag_path: 'unsupervised_pos_tagging/10M_spoken_7/flipped_emission.txt'
 
 trainer: 
   batch_size: 128 # across 8 GPUs gives an effective batch size of 1024
