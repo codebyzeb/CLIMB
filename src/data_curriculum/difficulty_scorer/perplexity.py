@@ -93,13 +93,12 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
         tokenized_dataset = dataset.map(
             lambda x: {
-                "tokenized_text": self.tokenizer.tokenize(
-                    x["text"], add_special_tokens=True
+                "tokenized_text": self.tokenizer.convert_ids_to_tokens(
+                    x["input_ids"],skip_special_tokens=True
                 )
                 if self.tokenizer is not None
                 else None
             },
-            remove_columns=["text"],
             num_proc=64,
         )
 
