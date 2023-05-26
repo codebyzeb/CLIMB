@@ -46,6 +46,7 @@ class DataPreprocessingParams(DictConfig):
     max_input_length: int
     concat_input: bool
     callback_functions: Optional[List[str]] = None
+    pos_tag_path: Optional[str] = None
 
 
 @dataclass
