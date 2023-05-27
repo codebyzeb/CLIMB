@@ -1,0 +1,30 @@
+# @package _global_
+defaults:
+  # switching off the vocabulary curriculum
+  - override /vocabulary_curriculum.pacing_fn_name: None
+
+hydra:
+  sweeper:
+    params:
+      # data curriculum
+      data_curriculum.difficulty_scorer_name: 
+        "self_perplexity"
+      data_curriculum.difficulty_scorer_kwargs.n_gram: 
+        range(1, 4)
+      data_curriculum.difficulty_scorer_kwargs.update: 
+        1000
+      data_curriculum.pacing_fn_name: 
+        choice("linear", "quad", "root", "step", "exp", "log", None)
+      data_curriculum.pacing_fn_kwargs.start_percent: 
+        uniform(0.1, 1.0)
+      data_curriculum.pacing_fn_kwargs.end_percent:
+        uniform(0.1, 1.0)
+      data_curriculum.pacing_fn_kwargs.starting_difficulty:
+        uniform(0.1, 1.0)
+      data_curriculum.pacing_fn_kwargs.max_difficulty:
+        uniform(0.1, 1.0)
+
+      # objective curriculum
+      objective_curriculum: 
+        choice("base_mlm", "mlm_to_pos")
+
