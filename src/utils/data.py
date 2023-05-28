@@ -1,16 +1,12 @@
 """Class for preprocessing the data, including tokenization, etc."""
 
-
-import logging
-
 # typing imports
 import string
 
+from torch.utils.data.sampler import Sampler
 from transformers import PreTrainedTokenizerFast
 
 from src.config import BabyLMConfig
-
-logger = logging.getLogger(__name__)
 
 POS_TAG_MAP = {
     'NOUN' : 0,
@@ -27,7 +23,22 @@ POS_TAG_MAP = {
     'X' : 11
 }
 
-class DataPreprocessor(object):
+class SequentialSubsetSampler(Sampler):
+    """
+    Samples elements sequentially from a set of indices, always in the same order.
+    """
+
+    def __init__(self, indices):
+        self.indices = indices
+
+    def __iter__(self):
+        return iter(self.indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+
+class DatasetPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
         """
         Args:
@@ -70,9 +81,6 @@ class DataPreprocessor(object):
             for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]): # type: ignore
                 tokenized_inputs = self.tokenizer(
                     example_text,
-                    padding="max_length",
-                    max_length=self.max_input_length,
-                    truncation=False,
                     return_special_tokens_mask=True,
                     return_offsets_mapping=True,
                 )
@@ -113,7 +121,6 @@ class DataPreprocessor(object):
                     batch["pos_tags"].append(
                         pos_tags[i : i + self.max_input_length]
                     )
-
         else:
             batch = self.tokenizer(
                 examples["text"],
