@@ -1,8 +1,6 @@
 # @package _global_
-defaults:
-  # switching off the vocabulary curriculum
-  - override /vocabulary_curriculum.pacing_fn_name: None
-
+# defaults:
+  
 hydra:
   sweeper:
     params:
@@ -27,4 +25,21 @@ hydra:
       # objective curriculum
       objective_curriculum: 
         choice("base_mlm", "mlm_to_pos")
+      # mlm task head
+      objective_curriculum.units.mlm.mlm.mask_probability: 
+        uniform(0.1, 0.5)
+      objective_curriculum.units.mlm.mlm.task_head_params.hidden_size:
+        choice(128, 256, 512)
+      objective_curriculum.units.mlm.mlm.optimizer_params.lr:
+        uniform(1e-5, 1e-3)
+      objective_curriculum.units.mlm.mlm.scheduler_params:
+        {}
+      # pos task head
+      objective_curriculum.units.pos.pos.task_head_params.hidden_size:
+        choice(128, 256, 512)
+
+
+      # switching off the vocabulary curriculum
+      vocabulary_curriculum.pacing_fn_name: None
+
 
