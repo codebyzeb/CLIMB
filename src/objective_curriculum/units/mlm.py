@@ -3,7 +3,7 @@
 from typing import Any, Dict, Optional
 
 from torch import Tensor
-from torch.nn import CrossEntropyLoss
+from torch.nn.functional import cross_entropy
 from torch.nn.parallel import DistributedDataParallel
 from transformers import (
     AdamW,
@@ -73,8 +73,6 @@ class MLMTask(BaseTaskUnit):
             num_training_steps=self.task_num_steps,
         )
 
-        self._loss_fn = CrossEntropyLoss()
-
     @property
     def task_name(self) -> str:
         """
@@ -123,6 +121,7 @@ class MLMTask(BaseTaskUnit):
         base_model_hidden_stats: Tensor,
         inputs: Dict[str, Tensor],
         override_lables: Optional[Tensor] = None,
+        loss_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """
         Given a batch of data, computes the cross entropy loss for the masked language modeling
@@ -132,9 +131,13 @@ class MLMTask(BaseTaskUnit):
         # compute the logits
         logits = self.task_head(base_model_hidden_stats).transpose(-1, -2)
 
-        labels = override_lables if override_lables is not None else inputs["labels_mlm"]
+        labels = (
+            override_lables
+            if override_lables is not None
+            else inputs["labels_mlm"]
+        )
 
         # compute the loss
-        loss = self._loss_fn(logits, labels)
+        loss = cross_entropy(logits, labels, **(loss_kwargs or {}))
 
         return loss
