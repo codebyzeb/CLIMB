@@ -2,12 +2,11 @@
 
 import os
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Mapping, Union, Optional
-
-from torch import save as torch_save
-from torch import load as torch_load
+from typing import Any, Callable, Dict, List, Mapping, Optional, Union
 
 from torch import Tensor, device
+from torch import load as torch_load
+from torch import save as torch_save
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -99,6 +98,7 @@ class BaseTaskUnit(metaclass=ABCMeta):
         base_model_hidden_stats: Tensor,
         inputs: Dict[str, Tensor],
         override_lables: Optional[Tensor] = None,
+        loss_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """
         Given a batch of data, computes the loss for the given task.
@@ -106,9 +106,11 @@ class BaseTaskUnit(metaclass=ABCMeta):
         Args:
             * base_model_hidden_stats (Tensor): The hidden states of the base model
             * inputs (Dict[str, Tensor]): The inputs to the task head
-            * override_lables (Optional[Tensor], optional): Overrides the labels for the task, 
+            * override_lables (Optional[Tensor], optional): Overrides the labels for the task,
                 usually we assume that the labels are in the inputs, but in some cases we may want
                 to override the labels. Defaults to None.
+            * loss_kwargs (Optional[Dict[str, Any]], optional): Additional keyword arguments to be
+                passed to the loss function. Defaults to None.
         """
         ...
 
@@ -131,7 +133,6 @@ class BaseTaskUnit(metaclass=ABCMeta):
             os.path.join(output_dir, f"{self.task_name}_scheduler.pt"),
         )
 
-
     def load(self, input_dir: str) -> None:
         """
         Loads the task unit from the given directory.
@@ -140,7 +141,7 @@ class BaseTaskUnit(metaclass=ABCMeta):
         self.task_head.load_state_dict(
             torch_load(
                 os.path.join(input_dir, f"{self.task_name}_task_head.pt"),
-                map_location='cpu',
+                map_location="cpu",
             )
         )
 

@@ -1,15 +1,65 @@
 """Class for preprocessing the data, including tokenization, etc."""
 
-
 # typing imports
 import string
+from collections import defaultdict
 
+# typing imports
+from typing import Dict, List, Tuple
+
+import torch
+from torch.utils.data.sampler import Sampler
 from transformers import PreTrainedTokenizerFast
 
 from src.config import BabyLMConfig
 
+POS_TAG_MAP = {
+    "NOUN": 0,
+    "VERB": 1,
+    "ADJ": 2,
+    "ADV": 3,
+    "PRON": 4,
+    "DET": 5,
+    "ADP": 6,
+    "NUM": 7,
+    "CONJ": 8,
+    "PRT": 9,
+    ".": 10,
+    "X": 11,
+}
 
-class DataPreprocessor(object):
+
+def base_collate_fn(_samples: List[Dict[str, List[Tuple[int, float]]]]):
+    joined_batch = defaultdict(list)
+    for sample in _samples:
+
+        for key, val in sample.items():
+            joined_batch[key].append(torch.tensor(val))
+
+    batch = {}
+
+    for key, val in joined_batch.items():
+        batch[key] = torch.stack(val)
+
+    return batch
+
+
+class SequentialSubsetSampler(Sampler):
+    """
+    Samples elements sequentially from a set of indices, always in the same order.
+    """
+
+    def __init__(self, indices):
+        self.indices = indices
+
+    def __iter__(self):
+        return iter(self.indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+
+class DatasetPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
         """
         Args:
@@ -30,8 +80,6 @@ class DataPreprocessor(object):
     # NOTE: The function names of callbacks must match the names in the data preprocessing
     # callback_functions list (sepcified in the config file)
 
-    # TODO: Implement more callbacks
-
     ### --- Callback functions --- ###
 
     def __call__(self, examples):
@@ -48,16 +96,45 @@ class DataPreprocessor(object):
                 "input_ids": [],
                 "special_tokens_mask": [],
                 "attention_mask": [],
+                "pos_tags": [],
             }
 
-            for example_text in examples["text"]:
+            for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]):  # type: ignore
                 tokenized_inputs = self.tokenizer(
                     example_text,
                     padding="max_length",
                     max_length=self.max_input_length,
                     truncation=False,
                     return_special_tokens_mask=True,
+                    return_offsets_mapping=True,
                 )
+
+                subwords = [example_text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
+                tag_pairs = [
+                    tag_pair.split("__<label>__")
+                    for tag_pair in example_tagged_text.strip().split(" ")
+                    if tag_pair != ""
+                ]
+                # Iterate through subwords and assign POS tags, hopefully they should match up, since
+                # the subwords in example_tagged_text were extracted by the tokenizer in the first place
+                pos_tags = []
+                i = 0
+                for subword in subwords:
+                    # This indicates that the subword is a special token
+                    if subword == "" or subword == "\n":
+                        pos_tags.append(POS_TAG_MAP["X"])
+                        continue
+                    # Check if we're at the start of the next word
+                    if i + 1 < len(tag_pairs) and tag_pairs[i + 1][
+                        0
+                    ].startswith(subword):
+                        i += 1
+                    # Keep using the POS tag of the current word
+                    pos_tags.append(
+                        POS_TAG_MAP[tag_pairs[i][1]]
+                        if tag_pairs[i][1] in POS_TAG_MAP
+                        else POS_TAG_MAP["X"]
+                    )
 
                 truncated_length = (len(tokenized_inputs["input_ids"]) // self.max_input_length) * self.max_input_length  # type: ignore
 
@@ -75,7 +152,9 @@ class DataPreprocessor(object):
                     batch["attention_mask"].append(
                         tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
                     )
-
+                    batch["pos_tags"].append(
+                        pos_tags[i : i + self.max_input_length]
+                    )
         else:
             batch = self.tokenizer(
                 examples["text"],
@@ -88,7 +167,7 @@ class DataPreprocessor(object):
         if self.callback_functions:
             for callback_function in self.callback_functions:
                 examples[callback_function] = getattr(self, callback_function)(
-                    examples["text"]
+                    examples
                 )
 
         return batch

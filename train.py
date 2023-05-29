@@ -18,7 +18,7 @@ from src.config import BabyLMConfig
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
-from src.utils.data_preprocessing import DataPreprocessor
+from src.utils.data import DatasetPreprocessor
 from src.utils.setup import set_seed
 
 # type-checks dynamic config file
@@ -64,7 +64,7 @@ def main(cfg: BabyLMConfig):
     # Preprocess data
     logger.info("Preprocessing data")
 
-    data_preprocessor = DataPreprocessor(cfg, tokenizer)
+    data_preprocessor = DatasetPreprocessor(cfg, tokenizer)
 
     train_dataset = dataset["train"].map(
         data_preprocessor,
