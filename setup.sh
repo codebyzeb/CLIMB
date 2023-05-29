@@ -1,9 +1,10 @@
 export PATH="$(pwd)/lib/bin:$PATH"
 
-module load python-3.9.6-gcc-5.4.0-sbr552h
-module unload rhel7/*
+module rm rhel7/global
+module rm rhel7/default-gpu
 
 if [ ! -d "env" ]; then
+	module load python-3.9.6-gcc-5.4.0-sbr552h
 	virtualenv -p python3.9 env
 	source env/bin/activate
 	git lfs install
