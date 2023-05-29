@@ -1,8 +1,8 @@
 # @package _global_
 defaults:
-  # set the task to the basic mlm whatever the default objective curriculum is in the main config file
   - override /objective_curriculum: "base_mlm"
 
+# define sweep paramters  
 hydra:
   sweeper:
     params:
@@ -11,7 +11,7 @@ hydra:
   
       # vocabulary curriculum
       vocabulary_curriculum.difficulty_scorer_name: 
-        "self_perplexity"
+        "token_ids"
       vocabulary_curriculum.difficulty_scorer_kwargs.n_gram: 
         range(1, 4)
       vocabulary_curriculum.difficulty_scorer_kwargs.update: 
@@ -19,10 +19,10 @@ hydra:
       vocabulary_curriculum.pacing_fn_name: 
         choice("linear", "quad", "root", "step", "exp", "log", None)
       vocabulary_curriculum.pacing_fn_kwargs.start_percent: 
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
       vocabulary_curriculum.pacing_fn_kwargs.end_percent:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
       vocabulary_curriculum.pacing_fn_kwargs.starting_difficulty:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
       vocabulary_curriculum.pacing_fn_kwargs.max_difficulty:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)

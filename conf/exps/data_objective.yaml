@@ -1,6 +1,7 @@
 # @package _global_
 # defaults:
-  
+
+# define sweep paramters  
 hydra:
   sweeper:
     params:
@@ -14,29 +15,31 @@ hydra:
       data_curriculum.pacing_fn_name: 
         choice("linear", "quad", "root", "step", "exp", "log", None)
       data_curriculum.pacing_fn_kwargs.start_percent: 
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
       data_curriculum.pacing_fn_kwargs.end_percent:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
       data_curriculum.pacing_fn_kwargs.starting_difficulty:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0,0.1)
       data_curriculum.pacing_fn_kwargs.max_difficulty:
-        uniform(0.1, 1.0)
+        range(0.1, 1.0, 0.1)
 
       # objective curriculum
       objective_curriculum: 
         choice("base_mlm", "mlm_to_pos")
+      
       # mlm task head
       objective_curriculum.units.mlm.mlm.mask_probability: 
-        uniform(0.1, 0.5)
+        range(0.1, 0.5, 0.1)
       objective_curriculum.units.mlm.mlm.task_head_params.hidden_size:
         choice(128, 256, 512)
       objective_curriculum.units.mlm.mlm.optimizer_params.lr:
-        uniform(1e-5, 1e-3)
-      objective_curriculum.units.mlm.mlm.scheduler_params:
-        {}
+        range(1e-5, 1e-3, 1e-5)
+   
       # pos task head
-      objective_curriculum.units.pos.pos.task_head_params.hidden_size:
-        choice(128, 256, 512)
+      objective_curriculum.units.pos.pos.mask_probability:
+        range(0.1, 0.5, 0.1)
+      objective_curriculum.units.pos.pos.optional_kwargs.lexical_class:
+        choice(["NOUN"], ["VERB"],["NOUN", "VERB"])
 
 
       # switching off the vocabulary curriculum

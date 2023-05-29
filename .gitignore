@@ -161,6 +161,7 @@ Footer
 
 # hydra outputs 
 outputs/
+multirun/
 
 # any slurm output files 
 *.out
