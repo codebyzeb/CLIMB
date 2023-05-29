@@ -22,8 +22,13 @@ if TYPE_CHECKING:
 # NLTK Package provides functionality for n-gram models
 from nltk.lm import MLE
 from nltk.util import everygrams
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+# Data processing utils
+from src.utils.data import SequentialSubsetSampler, base_collate_fn
+
+# Perplexity Computation
 from src.utils.inference import compute_trainer_perplexity
 
 from .base_difficulty_scorer import BaseDifficultyScorer
@@ -73,6 +78,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         data_cl_logger.info("Initializing n-gram perplexity scorer")
 
         self.n_gram = n_gram
+
         self._tokenizer = None
 
     def _train_model(self, dataset: Dataset):
@@ -85,31 +91,41 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             * None
         """
 
-        assert (
-            self.tokenizer is not None
+        assert self.tokenizer is not None and hasattr(
+            self.tokenizer, "pad_token_id"
         ), "The tokenizer must be set before training the n-gram model"
 
         data_cl_logger.info("Training n-gram model")
 
-        tokenized_dataset = dataset.map(
-            lambda x: {
-                "tokenized_text": self.tokenizer.convert_ids_to_tokens(
-                    x["input_ids"],skip_special_tokens=True
+        def remove_padding_tokens(example_batch):
+            batch = {"unpadded_input_ids": []}
+            for example in example_batch["input_ids"]:
+                batch["unpadded_input_ids"].append(
+                    [
+                        str(_id)
+                        for _id in example
+                        if _id != self.tokenizer.pad_token_id
+                    ]
                 )
-                if self.tokenizer is not None
-                else None
-            },
+
+            return batch
+
+        # removing padding tokens from the dataset
+        dataset = dataset.map(
+            remove_padding_tokens,
+            batched=True,
             num_proc=64,
         )
 
-        self.tokenized_text = tokenized_dataset["tokenized_text"]
+        self.tokenized_text = dataset["unpadded_input_ids"]
 
         # We split the tokenized dataset into n-gram that we can feed into the n-gram model
         train_data_n_grams = (
             everygrams(sent, max_len=self.n_gram)
             for sent in self.tokenized_text
         )
-        train_vocab = list(self.tokenizer.vocab.keys())
+
+        train_vocab = [str(val) for val in self.tokenizer.vocab.values()]
 
         self.lm = MLE(self.n_gram)
         self.lm.fit(train_data_n_grams, train_vocab)
@@ -145,6 +161,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         """
 
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
+
             self._train_model(dataset)
 
             assert hasattr(self, "lm"), "n-gram model not trained"
@@ -228,7 +245,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         max_difficulty_percentile: float,
     ) -> Sequence[float]:
 
-        assert self.tokenizer is not None
+        assert self.tokenizer is not None and self.trainer is not None
 
         # if this is the initial step, use the ngram model class's method
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
@@ -238,7 +255,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 dataset, indices, global_stepnum, max_difficulty_percentile
             )
             return self._difficulty_scores
-
         else:
             if global_stepnum % self.update == 0:
 
@@ -247,30 +263,31 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 )
                 difficulty_scores: Sequence[float] = []
 
-                # (if we are using distributed training, not all indices will be scored - only those
-                # assigned to the current process)
-                curr_indices_idx = 0
-
                 with torch.no_grad():
                     data_cl_logger.info(
                         "Evaluating perplexity [Trainer Model]"
                     )
 
-                    for _idx, ex in enumerate(tqdm(dataset)):
-                        if _idx == indices[curr_indices_idx]:
-                            # use map to tokenize each ngram and convert to input ids
-                            input_ids = ex["input_ids"]  # type: ignore
+                    # NOTE If we are using distributed training, not all indices will be scored
+                    # only those assigned to the current process
+                    sampler = SequentialSubsetSampler(indices)
 
-                            sample_perplexity = compute_trainer_perplexity(
-                                input_ids, self.tokenizer, self.trainer
-                            )
+                    inference_dataloader = DataLoader(
+                        dataset,  # type: ignore
+                        batch_size=32,
+                        shuffle=False,
+                        collate_fn=base_collate_fn,
+                        sampler=sampler,
+                        pin_memory=True,
+                    )
 
-                            difficulty_scores.append(sample_perplexity)
+                    for batch in tqdm(inference_dataloader):
 
-                            curr_indices_idx += 1
+                        batch_perplexity = compute_trainer_perplexity(
+                            batch, self.tokenizer, self.trainer
+                        )
 
-                            if curr_indices_idx == len(indices):
-                                break
+                        difficulty_scores.extend(batch_perplexity)
 
                     self._difficulty_scores = (
                         self.convert_difficulty_scores_to_percentiles(
