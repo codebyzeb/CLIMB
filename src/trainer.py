@@ -16,6 +16,7 @@ from omegaconf import OmegaConf
 # Data loading
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+from tqdm import tqdm
 
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
@@ -26,6 +27,7 @@ from transformers.utils import get_full_repo_name
 
 # Model Loading
 from src.models import load_base_model
+from src.utils.data import base_collate_fn
 from src.utils.inference import compute_trainer_perplexity
 
 # typing imports
@@ -260,11 +262,7 @@ class CustomTrainer(Trainer):
                 self.data_curriculum_cfg.difficulty_scorer_kwargs,
                 trainer=self,
             )
-            # ### For testing purposes ###
-            # indices = list(range(len(self.train_dataset)))
-            # difficulty_scorer.score_difficulty(dataset=self.train_dataset, indices=indices, global_stepnum=0, max_difficulty_percentile=.5)
-            # exit()
-            # ### End testing code ###
+
             if self.args.world_size <= 1:
                 return CurriculumSampler(
                     self.train_dataset,
@@ -446,13 +444,22 @@ class CustomTrainer(Trainer):
 
         perplexities = []
         with torch.no_grad():
-            for input_ids in eval_subset["input_ids"]:
 
-                sample_perplexity = compute_trainer_perplexity(
-                    input_ids, self.tokenizer, self
+            inference_dataloader = DataLoader(
+                eval_subset,  # type: ignore
+                batch_size=32,
+                shuffle=False,
+                collate_fn=base_collate_fn,
+                pin_memory=True,
+            )
+
+            for batch in tqdm(inference_dataloader):
+
+                batch_perplexity = compute_trainer_perplexity(
+                    batch, self.tokenizer, self
                 )
 
-                perplexities.append(sample_perplexity)
+                perplexities.extend(batch_perplexity)
 
         metrics["perplexity_mean"] = torch.mean(
             torch.tensor(perplexities)
