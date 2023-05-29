@@ -14,19 +14,20 @@ from transformers import PreTrainedTokenizerFast
 from src.config import BabyLMConfig
 
 POS_TAG_MAP = {
-    'NOUN' : 0,
-    'VERB' : 1,
-    'ADJ' : 2,
-    'ADV' : 3,
-    'PRON' : 4,
-    'DET' : 5,
-    'ADP' : 6,
-    'NUM' : 7,
-    'CONJ' : 8,
-    'PRT' : 9,
-    '.' : 10,
-    'X' : 11
+    "NOUN": 0,
+    "VERB": 1,
+    "ADJ": 2,
+    "ADV": 3,
+    "PRON": 4,
+    "DET": 5,
+    "ADP": 6,
+    "NUM": 7,
+    "CONJ": 8,
+    "PRT": 9,
+    ".": 10,
+    "X": 11,
 }
+
 
 def base_collate_fn(_samples: List[Dict[str, List[Tuple[int, float]]]]):
     joined_batch = defaultdict(list)
@@ -98,29 +99,42 @@ class DatasetPreprocessor(object):
                 "pos_tags": [],
             }
 
-            for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]): # type: ignore
+            for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]):  # type: ignore
                 tokenized_inputs = self.tokenizer(
                     example_text,
+                    padding="max_length",
+                    max_length=self.max_input_length,
+                    truncation=False,
                     return_special_tokens_mask=True,
                     return_offsets_mapping=True,
                 )
 
-                subwords = [example_text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]] # type: ignore
-                tag_pairs = [tag_pair.split('__<label>__') for tag_pair in example_tagged_text.strip().split(" ") if tag_pair != '']
+                subwords = [example_text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
+                tag_pairs = [
+                    tag_pair.split("__<label>__")
+                    for tag_pair in example_tagged_text.strip().split(" ")
+                    if tag_pair != ""
+                ]
                 # Iterate through subwords and assign POS tags, hopefully they should match up, since
                 # the subwords in example_tagged_text were extracted by the tokenizer in the first place
                 pos_tags = []
                 i = 0
                 for subword in subwords:
                     # This indicates that the subword is a special token
-                    if subword == '' or subword == '\n':
-                        pos_tags.append(POS_TAG_MAP['X'])
+                    if subword == "" or subword == "\n":
+                        pos_tags.append(POS_TAG_MAP["X"])
                         continue
                     # Check if we're at the start of the next word
-                    if i + 1 < len(tag_pairs) and tag_pairs[i+1][0].startswith(subword):
+                    if i + 1 < len(tag_pairs) and tag_pairs[i + 1][
+                        0
+                    ].startswith(subword):
                         i += 1
                     # Keep using the POS tag of the current word
-                    pos_tags.append(POS_TAG_MAP[tag_pairs[i][1]] if tag_pairs[i][1] in POS_TAG_MAP else POS_TAG_MAP['X']) 
+                    pos_tags.append(
+                        POS_TAG_MAP[tag_pairs[i][1]]
+                        if tag_pairs[i][1] in POS_TAG_MAP
+                        else POS_TAG_MAP["X"]
+                    )
 
                 truncated_length = (len(tokenized_inputs["input_ids"]) // self.max_input_length) * self.max_input_length  # type: ignore
 
