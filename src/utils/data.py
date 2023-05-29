@@ -2,7 +2,12 @@
 
 # typing imports
 import string
+from collections import defaultdict
 
+# typing imports
+from typing import Dict, List, Tuple
+
+import torch
 from torch.utils.data.sampler import Sampler
 from transformers import PreTrainedTokenizerFast
 
@@ -22,6 +27,21 @@ POS_TAG_MAP = {
     '.' : 10,
     'X' : 11
 }
+
+def base_collate_fn(_samples: List[Dict[str, List[Tuple[int, float]]]]):
+    joined_batch = defaultdict(list)
+    for sample in _samples:
+
+        for key, val in sample.items():
+            joined_batch[key].append(torch.tensor(val))
+
+    batch = {}
+
+    for key, val in joined_batch.items():
+        batch[key] = torch.stack(val)
+
+    return batch
+
 
 class SequentialSubsetSampler(Sampler):
     """
