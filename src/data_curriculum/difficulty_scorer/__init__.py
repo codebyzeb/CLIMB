@@ -7,6 +7,7 @@ from typing_extensions import Protocol, runtime_checkable
 from src.config import DifficultyScorerKwargsType
 
 from .base_difficulty_scorer import BaseDifficultyScorer
+from .data_split import DataSplitSorter
 
 # importing for registry to register difficulty scorers
 from .perplexity import NGramPerplexityScorer

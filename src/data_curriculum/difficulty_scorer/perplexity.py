@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Generator, List, Sequence, Tuple, Union
 
-import numpy as np
 import torch
 
 # typing imports
@@ -47,22 +46,6 @@ class PerplexityBaseClass(BaseDifficultyScorer):
     @tokenizer.setter
     def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
         self._tokenizer = tokenizer
-
-    def convert_difficulty_scores_to_percentiles(
-        self,
-        difficulty_scores: Sequence[float],
-        max_difficulty_percentile: float,
-    ) -> Sequence[float]:
-        max_difficulty = float(
-            np.percentile(difficulty_scores, max_difficulty_percentile * 100)
-        )
-
-        # Set difficulty scores that are above the max difficulty percentile to 0
-        _difficulty_scores = [
-            score if score <= max_difficulty else 0.0
-            for score in difficulty_scores
-        ]
-        return _difficulty_scores
 
 
 @register_difficulty_scorer("ngram_perplexity")
@@ -161,7 +144,6 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         """
 
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
-
             self._train_model(dataset)
 
             assert hasattr(self, "lm"), "n-gram model not trained"
@@ -183,7 +165,6 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
-
                     perplexity = self._compute_ngram_perplexity(n_gram)
                     difficulty_scores.append(perplexity)
 
@@ -244,7 +225,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         global_stepnum: int,
         max_difficulty_percentile: float,
     ) -> Sequence[float]:
-
         assert self.tokenizer is not None and self.trainer is not None
 
         # if this is the initial step, use the ngram model class's method
@@ -257,7 +237,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             return self._difficulty_scores
         else:
             if global_stepnum % self.update == 0:
-
                 data_cl_logger.info(
                     f"Recalculating sample weights using model at step {global_stepnum}"
                 )
@@ -282,7 +261,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                     )
 
                     for batch in tqdm(inference_dataloader):
-
                         batch_perplexity = compute_trainer_perplexity(
                             batch, self.tokenizer, self.trainer
                         )

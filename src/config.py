@@ -1,7 +1,7 @@
 """Defines the set of hyperparameters to be specified in the config file."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional
 
 from omegaconf import MISSING, DictConfig
 
@@ -93,6 +93,7 @@ class ObjectiveCurriculumUnitParams(DictConfig):
     # Additional optional kwargs dependent on the objective curriculum unit
     optional_kwargs: Optional[Dict[str, Any]] = field(default_factory=dict)
 
+
 @dataclass
 class ObjectiveCurriculumParams(DictConfig):
     # objective curriculum learning parameters
@@ -116,14 +117,8 @@ class PacingFunctionParams(Mapping[str, Any]):
 
 
 # Difficulty Scorer Parameters
-@dataclass
-class PerplexityDifficultyScorerParams(Mapping[str, Any]):
-    # n-gram perplexity parameters
-    n_gram: int
-    update: Optional[int] = None
 
-
-DifficultyScorerKwargsType = Union[PerplexityDifficultyScorerParams, None]
+DifficultyScorerKwargsType = Optional[Dict[str, Any]]
 
 
 @dataclass
