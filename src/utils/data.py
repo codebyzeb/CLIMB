@@ -32,7 +32,6 @@ POS_TAG_MAP = {
 def base_collate_fn(_samples: List[Dict[str, List[Tuple[int, float]]]]):
     joined_batch = defaultdict(list)
     for sample in _samples:
-
         for key, val in sample.items():
             joined_batch[key].append(torch.tensor(val))
 
@@ -91,17 +90,21 @@ class DatasetPreprocessor(object):
 
         # concatenate the input text if concat_input is True then split into chunks of max_input_length
         if self.concat_input:
-
             batch = {
                 "input_ids": [],
                 "special_tokens_mask": [],
                 "attention_mask": [],
                 "pos_tags": [],
+                "filename": [],
             }
 
-            for example_text, example_tagged_text in zip(examples["text"], examples["tagged_text"]):  # type: ignore
+            for example in range(len(examples["text"])):
+                text = examples["text"][example]
+                tagged_text = examples["tagged_text"][example]
+                filename = examples["filename"][example]
+
                 tokenized_inputs = self.tokenizer(
-                    example_text,
+                    text,
                     padding="max_length",
                     max_length=self.max_input_length,
                     truncation=False,
@@ -109,10 +112,10 @@ class DatasetPreprocessor(object):
                     return_offsets_mapping=True,
                 )
 
-                subwords = [example_text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
+                subwords = [text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
                 tag_pairs = [
                     tag_pair.split("__<label>__")
-                    for tag_pair in example_tagged_text.strip().split(" ")
+                    for tag_pair in tagged_text.strip().split(" ")
                     if tag_pair != ""
                 ]
                 # Iterate through subwords and assign POS tags, hopefully they should match up, since
@@ -155,6 +158,7 @@ class DatasetPreprocessor(object):
                     batch["pos_tags"].append(
                         pos_tags[i : i + self.max_input_length]
                     )
+                    batch["filename"].append(filename)
         else:
             batch = self.tokenizer(
                 examples["text"],

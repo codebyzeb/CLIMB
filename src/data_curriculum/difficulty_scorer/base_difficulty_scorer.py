@@ -3,12 +3,29 @@
 from abc import ABCMeta, abstractmethod
 from typing import Sequence
 
+import numpy as np
 from torch.utils.data import Dataset
 
 
 class BaseDifficultyScorer(metaclass=ABCMeta):
     def __init__(self):
         pass
+
+    def convert_difficulty_scores_to_percentiles(
+        self,
+        difficulty_scores: Sequence[float],
+        max_difficulty_percentile: float,
+    ) -> Sequence[float]:
+        max_difficulty = float(
+            np.percentile(difficulty_scores, max_difficulty_percentile * 100)
+        )
+
+        # Set difficulty scores that are above the max difficulty percentile to 0
+        _difficulty_scores = [
+            score if score <= max_difficulty else 0.0
+            for score in difficulty_scores
+        ]
+        return _difficulty_scores
 
     @abstractmethod
     def score_difficulty(

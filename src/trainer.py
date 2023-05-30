@@ -65,7 +65,6 @@ class CurriculumLearningCallback(TrainerCallback):
     """
 
     def on_step_end(self, *_, train_dataloader, **kwargs) -> None:
-
         if isinstance(
             train_dataloader.sampler,
             (CurriculumSampler, DistributedCurriculumSampler),
@@ -333,16 +332,18 @@ class CustomTrainer(Trainer):
         assert self.train_dataset is not None
 
         # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
-        # training, we only remove the text column here. We will remove the other columns in a
+        # training, we only remove the filename column here. We will remove the other columns in a
         # postprocessing step (after the objective function collation).
 
         train_sampler = self._get_train_sampler()
+
+        train_dataset = self.train_dataset.remove_columns("filename")  # type: ignore
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these
         # ignore columns to the dataloader so that they are not included in the batch, but we
         # might want to use this information when generating the objective.
-        ignore_columns = self._get_ignore_columns(self.train_dataset)
+        ignore_columns = self._get_ignore_columns(train_dataset)
 
         assert (
             self.tokenizer is not None
@@ -350,7 +351,6 @@ class CustomTrainer(Trainer):
 
         # Create the vocabulary map according to the tokenizer curriculum
         if self.vocabulary_curriculum_cfg:
-
             pacing_fn = get_pacing_fn(
                 self.vocabulary_curriculum_cfg.pacing_fn_name,
                 self.args.max_steps,
@@ -375,7 +375,7 @@ class CustomTrainer(Trainer):
             tokenizer=self.tokenizer,
             vocabulary_map=vocabulary_map,
             ignore_columns=ignore_columns,
-            dataset=self.train_dataset,
+            dataset=train_dataset,
             sampler=train_sampler,
             batch_size=self._train_batch_size,
             drop_last=self.args.dataloader_drop_last,
@@ -384,7 +384,6 @@ class CustomTrainer(Trainer):
         )
 
     def compute_loss(self, model, inputs, **kwargs):
-
         base_model_outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -451,7 +450,6 @@ class CustomTrainer(Trainer):
 
         perplexities = []
         with torch.no_grad():
-
             inference_dataloader = DataLoader(
                 eval_subset,  # type: ignore
                 batch_size=32,
@@ -461,7 +459,6 @@ class CustomTrainer(Trainer):
             )
 
             for batch in tqdm(inference_dataloader):
-
                 batch_perplexity = compute_trainer_perplexity(
                     batch, self.tokenizer, self
                 )

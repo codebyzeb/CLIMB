@@ -180,3 +180,4 @@ notebooks/
 clones/
 
 .vscode/
+*.DS_Store
