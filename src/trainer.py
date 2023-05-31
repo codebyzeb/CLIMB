@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
+import torch.distributed as dist
 from huggingface_hub.hf_api import create_repo
 from huggingface_hub.repository import Repository
 from omegaconf import OmegaConf
@@ -419,6 +420,9 @@ class CustomTrainer(Trainer):
             A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
             dictionary also contains the epoch number which comes from the training state.
         """
+
+        # NOTE: This code runs on all processes (i.e. multiple GPUs) in a distributed settings.
+
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
@@ -430,9 +434,9 @@ class CustomTrainer(Trainer):
         # Get 10_000 samples from the eval dataset
         eval_subset = self.eval_dataset.select(  # type: ignore
             range(
-                0,
+                self.args.process_index,  # local process rank
                 self.eval_dataset.num_rows,  # type: ignore
-                self.eval_dataset.num_rows // 10000,  # type: ignore
+                self.eval_dataset.num_rows // (10000 // self.args.world_size),  # type: ignore
             )
         )
         logging.info("Evaluating perplexity...")
@@ -461,12 +465,38 @@ class CustomTrainer(Trainer):
 
                 perplexities.extend(batch_perplexity)
 
-        metrics["perplexity_mean"] = torch.mean(
-            torch.tensor(perplexities)
-        ).item()
-        metrics["perplexity_std"] = torch.std(
-            torch.tensor(perplexities)
-        ).item()
+        perplexity_mean = torch.mean(
+            torch.tensor(perplexities, device=self.args.device)
+        )
+        perplexity_std = torch.std(
+            torch.tensor(perplexities, device=self.args.device)
+        )
+
+        if self.args.world_size > 1:
+            # setup barrier for all processes
+            dist.barrier()
+
+            # Reduce perplexity across all processes
+            gathered_perplexity_mean = [
+                torch.zeros_like(perplexity_mean)
+                for _ in range(self.args.world_size)
+            ]
+            gathered_perplexity_std = [
+                torch.zeros_like(perplexity_std)
+                for _ in range(self.args.world_size)
+            ]
+
+            dist.all_gather(gathered_perplexity_mean, perplexity_mean)
+            dist.all_gather(gathered_perplexity_std, perplexity_std)
+
+        # if main process
+        if self.args.process_index == 0:
+            metrics["perplexity_mean"] = torch.mean(
+                torch.tensor(perplexities)
+            ).item()
+            metrics["perplexity_std"] = torch.std(
+                torch.tensor(perplexities)
+            ).item()
 
         # Additional behaviour - evaluate on BLIMP
         logging.info("Evaluating on BLIMP...")
@@ -474,12 +504,29 @@ class CustomTrainer(Trainer):
 
         inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
-        evaluator = BlimpEvaluator(inference_model_dir)
-        metrics = evaluator()
-        for key in list(metrics.keys()):
+        evaluator = BlimpEvaluator(
+            inference_model_dir,
+            device=self.args.device,
+            process_index=self.args.process_index,  # world (global) process index
+            world_size=self.args.world_size,
+        )
+        evaluator_metrics = evaluator()
+
+        # NOTE: At this point, the main process should have all the metrics from all processes.
+        # All processes that are not the main process can now return from this method.
+
+        if self.args.process_index != 0:
+            return {}
+
+        assert evaluator_metrics is not None
+
+        for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
-                metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-        metrics.update(metrics)
+                evaluator_metrics[
+                    f"{metric_key_prefix}_{key}"
+                ] = evaluator_metrics.pop(key)
+
+        metrics.update(evaluator_metrics)
 
         if f"{metric_key_prefix}_jit_compilation_time" in metrics:
             start_time += metrics[f"{metric_key_prefix}_jit_compilation_time"]
@@ -523,9 +570,10 @@ class CustomTrainer(Trainer):
         Override the Trainer._save() method to save the objective curriculum state as well,
         and to save the full language model (base model + mlm head).
         """
-        super()._save(output_dir=output_dir, state_dict=state_dict)
 
         if self.args.should_save:
+            super()._save(output_dir=output_dir, state_dict=state_dict)
+
             # Saving should be done only on the main process
 
             # NOTE: We need to save the objective curriculum state as well
@@ -538,9 +586,10 @@ class CustomTrainer(Trainer):
             os.makedirs(mlm_model_dir, exist_ok=True)
             os.makedirs(task_heads_dir, exist_ok=True)
 
-            # save the full language model
+            # save the full language model + the associated tokenizer (for inference)
             lm_model = self._initialize_full_lm_model()
             lm_model.save_pretrained(mlm_model_dir)
+            self.tokenizer.save_pretrained(mlm_model_dir)
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
 
