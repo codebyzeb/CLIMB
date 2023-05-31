@@ -6,7 +6,7 @@ defaults:
   - model: babyberta
   - objective_curriculum: base_mlm
   - data_curriculum: linear_data_split
-  - vocabulary_curriculum: linear_token_ids
+  - vocabulary_curriculum: linear_pos_tags_and_token_ids
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'

@@ -138,15 +138,10 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         if self._pin_memory:
             data = _torch_pin_memory(data, self._pin_memory_device)  # type: ignore[arg-type]
 
-        # remove ignored columns
-        if self.loader.ignore_columns is not None:
-            for ignore_column in self.loader.ignore_columns:
-                data.pop(ignore_column, None)
-
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
             data["input_ids"] = self.loader.vocabulary_map.map_tokens(
-                data["input_ids"], self.loader.global_stepnum
+                data, "input_ids", self.loader.global_stepnum
             )
 
             for data_key in data.keys():
@@ -155,7 +150,12 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
                     # the vocabulary
 
                     data[data_key] = self.loader.vocabulary_map.map_tokens(
-                        data[data_key], self.loader.global_stepnum
+                        data, data_key, self.loader.global_stepnum
                     )
+
+        # remove ignored columns
+        if self.loader.ignore_columns is not None:
+            for ignore_column in self.loader.ignore_columns:
+                data.pop(ignore_column, None)
 
         return data

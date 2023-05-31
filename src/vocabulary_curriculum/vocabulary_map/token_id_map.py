@@ -1,13 +1,10 @@
-import logging
-from typing import Callable
+from typing import Callable, Dict
 
 from torch import Tensor
 from transformers import PreTrainedTokenizerFast
 
 from .base_map import BaseVocabularyMap
 from .registry import register_vocabulary_map
-
-logger = logging.getLogger("VocabularyMap")
 
 
 @register_vocabulary_map("token_ids")
@@ -26,30 +23,28 @@ class TokenIDVocabularyMap(BaseVocabularyMap):
         """
         Args:
             * tokenizer (PreTrainedTokenizer): The tokenizer used for preprocessing the data
+            * pacing_fn (Callable[[int], float]): The pacing function, returns a percentage when given the global step number
         """
 
         super().__init__(tokenizer, pacing_fn)
-        self.unk_token_id = (
-            tokenizer.unk_token_id
-            if tokenizer.unk_token_id is not None
-            else tokenizer.all_special_ids[-1]
-        )
         self.vocab_size = tokenizer.vocab_size
 
     def map_tokens(
         self,
-        ids: Tensor,
+        data: Dict[str, Tensor],
+        key: str,
         global_stepnum: int,
     ) -> Tensor:
         """
         Map a tensor of token ids to a tensor of token ids with difficult tokens mapped to <unk>.
 
         Args:
-            * ids (Tensor): A Tensor containing token ids
+            * data (Dict[str, Tensor]): A dictionary containing the data
+            * key (str): The key of the data to map
             * global_stepnum (int): The global step number of the training loop
         Returns:
             * mapped_ids (Tensor): A Tensor containing the token ids with difficult tokens mapped to <unk>
         """
 
         max_id = self.pacing_fn(global_stepnum) * self.vocab_size
-        return ids.masked_fill(ids > max_id, self.unk_token_id)
+        return data[key].masked_fill(data[key] > max_id, self.unk_token_id)
