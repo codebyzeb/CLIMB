@@ -61,6 +61,10 @@ def main(cfg: BabyLMConfig):
     logger.info("Initializing model")
     model = load_base_model(cfg)
 
+    logger.debug("Model parameters:")
+    for i, (name, param) in enumerate(model.named_parameters()):
+        logger.debug(f"{i}: {name}")
+
     # Preprocess data
     logger.info("Preprocessing data")
 
@@ -134,6 +138,7 @@ def main(cfg: BabyLMConfig):
         is not None,  # NOTE: This is to ensure that the curriculum is not broken on the last batch
         remove_unused_columns=False,
         load_best_model_at_end=not cfg.experiment.dry_run,
+        ddp_find_unused_parameters=False,
     )
 
     # Set up trainer

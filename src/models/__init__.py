@@ -27,6 +27,11 @@ def load_base_model(cfg: BabyLMConfig) -> PreTrainedModel:
     else:
         raise ValueError(f"Model {cfg.model.name} not found in registry")
 
+    # The final pooler layer is not used, so gradients need to be deactivated
+    for name, param in model.named_parameters():
+        if "pooler" in name:
+            param.requires_grad = False
+
     return model
 
     # TODO Implement load from checkpoint
