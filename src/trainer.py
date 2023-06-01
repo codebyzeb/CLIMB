@@ -91,6 +91,7 @@ class CustomTrainer(Trainer):
     def __init__(
         self,
         hydra_config: BabyLMConfig,
+        dry_run: bool,
         args: TrainingArguments,
         tokenizer: PreTrainedTokenizerFast,
         **kwargs,
@@ -103,12 +104,14 @@ class CustomTrainer(Trainer):
 
         Args:
             * hydra_config: (BabyLMConfig): The config object.
+            * dry_run (bool): Whether the experiment is being run in dry run mode
             * args (TrainingArguments): The training arguments, unpacked from the kwargs dict
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
         """
 
         self.hydra_config = hydra_config
+        self.dry_run = dry_run
 
         self.experiment_group = hydra_config.experiment.group
         self.experiment_name = hydra_config.experiment.name
@@ -272,6 +275,7 @@ class CustomTrainer(Trainer):
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
                     global_stepnum=self.state.global_step,
+                    dry_run=self.dry_run,
                 )
             else:
                 return DistributedCurriculumSampler(
@@ -436,7 +440,7 @@ class CustomTrainer(Trainer):
             range(
                 self.args.process_index,  # local process rank
                 self.eval_dataset.num_rows,  # type: ignore
-                self.eval_dataset.num_rows // (10000 // self.args.world_size),  # type: ignore
+                self.eval_dataset.num_rows // ((100 if self.dry_run else 10_000) // self.args.world_size),  # type: ignore
             )
         )
         logging.info("Evaluating perplexity...")
@@ -465,12 +469,11 @@ class CustomTrainer(Trainer):
 
                 perplexities.extend(batch_perplexity)
 
-        perplexity_mean = torch.mean(
-            torch.tensor(perplexities, device=self.args.device)
+        tensor_perplexities = torch.tensor(
+            perplexities, device=self.args.device
         )
-        perplexity_std = torch.std(
-            torch.tensor(perplexities, device=self.args.device)
-        )
+        perplexity_mean = torch.mean(tensor_perplexities)
+        perplexity_std = torch.std(tensor_perplexities)
 
         if self.args.world_size > 1:
             # setup barrier for all processes
@@ -491,10 +494,10 @@ class CustomTrainer(Trainer):
 
         # if main process
         if self.args.process_index == 0:
-            metrics["perplexity_mean"] = torch.mean(
+            metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
                 torch.tensor(perplexities)
             ).item()
-            metrics["perplexity_std"] = torch.std(
+            metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
                 torch.tensor(perplexities)
             ).item()
 
@@ -509,6 +512,7 @@ class CustomTrainer(Trainer):
             device=self.args.device,
             process_index=self.args.process_index,  # world (global) process index
             world_size=self.args.world_size,
+            dry_run=self.dry_run,
         )
         evaluator_metrics = evaluator()
 
