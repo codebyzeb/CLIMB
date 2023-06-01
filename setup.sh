@@ -1,4 +1,3 @@
-export PATH="$(pwd)/lib/bin:$PATH"
 
 module rm rhel7/global
 module rm rhel7/default-gpu
@@ -24,3 +23,4 @@ fi
 source .env
 
 
+export PATH="$(pwd)/lib/bin:$PATH"
