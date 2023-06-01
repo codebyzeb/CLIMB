@@ -89,6 +89,7 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
         batch_size: int,
         generator: Union[Generator, None] = None,
         global_stepnum: int = 0,
+        dry_run: bool = False,
     ) -> None:
         """
         Args:
@@ -105,6 +106,10 @@ class CurriculumSampler(CurriculumIterMixin, Sampler):
         self.dataset = copy.deepcopy(dataset)
 
         self.indices: Sequence[int] = list(range(len(dataset)))  # type: ignore[arg-type]
+
+        if dry_run:
+            # NOTE: subsample the dataset by an order of 100
+            self.indices = self.indices[0 : len(dataset) : 100]  # type: ignore[arg-type]
 
         self.difficulty_scorer = difficulty_scorer
         self.pacing_fn = pacing_fn

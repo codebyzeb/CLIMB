@@ -138,12 +138,16 @@ def main(cfg: BabyLMConfig):
         is not None,  # NOTE: This is to ensure that the curriculum is not broken on the last batch
         remove_unused_columns=False,
         load_best_model_at_end=not cfg.experiment.dry_run,
+        metric_for_best_model="eval_perplexity_mean"
+        if not cfg.experiment.dry_run
+        else None,
         ddp_find_unused_parameters=False,
     )
 
     # Set up trainer
     trainer = CustomTrainer(
         hydra_config=cfg,
+        dry_run=cfg.experiment.dry_run,
         model=model,
         args=training_args,
         train_dataset=train_dataset,

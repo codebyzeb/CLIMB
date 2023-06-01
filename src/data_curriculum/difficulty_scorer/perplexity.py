@@ -67,12 +67,17 @@ class PerplexityBaseClass(BaseDifficultyScorer):
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(PerplexityBaseClass):
-    def __init__(self, n_gram: int, **kwargs):
+    def __init__(
+        self, n_gram: int, train_subsample_factor: int = 100, **kwargs
+    ):
         """
         Initializes the n-gram perplexity scorer.
 
         Args:
             * n_gram (int): The n-gram to use for the n-gram model
+            * train_subsample_factor (int): The factor by which to subsample the dataset for
+                training the n-gram model. For example, if dataset_subsample_factor = 2, then
+                the n-gram model will be trained on half the dataset.
         """
 
         data_cl_logger.info("Initializing n-gram perplexity scorer")
@@ -81,7 +86,12 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
         self._tokenizer = None
 
-    def _train_model(self, dataset: Dataset):
+        self.train_subsample_factor = train_subsample_factor
+
+    def _train_model(
+        self,
+        dataset: Dataset,
+    ):
         """
         Trains a n-gram model on the dataset.
 
@@ -122,7 +132,9 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         # We split the tokenized dataset into n-gram that we can feed into the n-gram model
         train_data_n_grams = (
             everygrams(sent, max_len=self.n_gram)
-            for sent in self.tokenized_text
+            for sent in self.tokenized_text[
+                0 : dataset.num_rows : self.train_subsample_factor
+            ]
         )
 
         train_vocab = [str(val) for val in self.tokenizer.vocab.values()]
@@ -164,7 +176,9 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
             self._train_model(dataset)
 
-            assert hasattr(self, "lm"), "n-gram model not trained"
+            assert hasattr(self, "lm") and hasattr(
+                self, "tokenized_text"
+            ), "n-gram model not trained"
 
             difficulty_scores: Sequence[float] = []
 

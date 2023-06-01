@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import shutil
 import subprocess
 from typing import Any, Dict, Union
 
@@ -20,10 +21,11 @@ class BlimpEvaluator(object):
         device: torch.device,
         process_index: int,
         world_size: int,
+        dry_run: bool = False,
     ):
         """
         Args:
-            out_dir (str): Path to the output directory
+            * out_dir (str): Path to the output directory
         """
 
         self.out_dir = out_dir
@@ -31,6 +33,8 @@ class BlimpEvaluator(object):
         self.device = device
         self.process_index = process_index
         self.world_size = world_size
+
+        self.dry_run = dry_run
 
     def __call__(self) -> Union[Dict[str, Any], None]:
         """
@@ -49,6 +53,7 @@ class BlimpEvaluator(object):
             + f" --device {self.device}"
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
+            + f" --dry_run {self.dry_run}"
         )
         subprocess.run(cmd, shell=True)
 
@@ -69,4 +74,8 @@ class BlimpEvaluator(object):
                 )
             ) as f:
                 accuracies[task] = json.load(f)["eval_accuracy"]
+
+        # Delete the zeroshot directory
+        shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
+
         return accuracies
