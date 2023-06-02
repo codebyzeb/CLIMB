@@ -28,7 +28,10 @@ from tqdm import tqdm
 from src.utils.data import SequentialSubsetSampler, base_collate_fn
 
 # Perplexity Computation
-from src.utils.inference import compute_trainer_perplexity
+from src.utils.inference import (
+    compute_trainer_perplexity,
+    prepare_dataset_for_ppl_inference,
+)
 
 from .base_difficulty_scorer import BaseDifficultyScorer
 from .registry import register_difficulty_scorer
@@ -251,6 +254,14 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             return self._difficulty_scores
         else:
             if global_stepnum % self.update == 0:
+
+                # NOTE: remove keys from dataset that are not in the signature of the model,
+                # since we pass the data through the model
+
+                dataset = prepare_dataset_for_ppl_inference(
+                    self._trainer, dataset
+                )
+
                 data_cl_logger.info(
                     f"Recalculating sample weights using model at step {global_stepnum}"
                 )
