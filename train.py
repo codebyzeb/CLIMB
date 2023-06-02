@@ -5,6 +5,7 @@ import os
 
 # config-related imports
 import hydra
+import torch
 
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
@@ -27,6 +28,8 @@ cs.store(name="base_config", node=BabyLMConfig)
 
 # A logger for this file
 logger = logging.getLogger(__name__)
+
+DRY_RUN_SUBSAMPLE_FACTOR = 1000 // (10 if torch.cuda.device_count() > 1 else 1)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -77,6 +80,14 @@ def main(cfg: BabyLMConfig):
         remove_columns=dataset["train"].column_names,
     )
 
+    if cfg.experiment.dry_run:
+        logger.info(
+            f"Running in dry run mode -- subsampling dataset by {DRY_RUN_SUBSAMPLE_FACTOR}x"
+        )
+        train_dataset = train_dataset.select(
+            range(0, train_dataset.num_rows, DRY_RUN_SUBSAMPLE_FACTOR)
+        )
+
     data_preprocessor.concat_input = False
     eval_dataset = dataset["validation"].map(
         data_preprocessor,
@@ -116,9 +127,11 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         evaluation_strategy="steps",
         eval_steps=cfg.trainer.max_training_steps
-        // 10,  # eval every 10% of training
+        // (2 if cfg.experiment.dry_run else 10),  # eval every 10% of training
         save_steps=cfg.trainer.max_training_steps
-        // 10,  # checkpoint every 10% of training
+        // (
+            2 if cfg.experiment.dry_run else 10
+        ),  # checkpoint every 10% of training
         logging_steps=cfg.trainer.max_training_steps
         // 100,  # log every 1% of training
         run_name=cfg.experiment.name,
