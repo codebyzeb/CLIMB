@@ -67,9 +67,7 @@ class PerplexityBaseClass(BaseDifficultyScorer):
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(PerplexityBaseClass):
-    def __init__(
-        self, n_gram: int, train_subsample_factor: int = 100, **kwargs
-    ):
+    def __init__(self, n_gram: int, train_subsample_factor: int = 1, **kwargs):
         """
         Initializes the n-gram perplexity scorer.
 
@@ -114,7 +112,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
                     [
                         str(_id)
                         for _id in example
-                        if _id != self.tokenizer.pad_token_id
+                        if _id != self.tokenizer.pad_token_id  # type: ignore
                     ]
                 )
 
@@ -205,6 +203,8 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
                     if curr_indices_idx == len(indices):
                         break
+            else:
+                raise RuntimeError("Not all indices were scored")
 
             self._difficulty_scores = (
                 self.convert_difficulty_scores_to_percentiles(

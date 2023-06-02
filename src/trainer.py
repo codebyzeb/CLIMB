@@ -275,7 +275,6 @@ class CustomTrainer(Trainer):
                     batch_size=self.args.per_device_train_batch_size,
                     generator=generator,
                     global_stepnum=self.state.global_step,
-                    dry_run=self.dry_run,
                 )
             else:
                 return DistributedCurriculumSampler(
