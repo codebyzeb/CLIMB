@@ -47,7 +47,7 @@ class PartOfSpeechVocabularyMap(BaseVocabularyMap):
         max_tag = self.pacing_fn(global_stepnum) * self.max_pos_tag
         mask = data["pos_tags"] > max_tag
         # Ensure we don't replace special tokens with UNK
-        mask = mask.logical_and(~data[key] > self.max_special_token)
+        mask = mask.logical_and(data[key] > self.max_special_token)
         return data[key].masked_fill(mask, self.unk_token_id)
 
 
