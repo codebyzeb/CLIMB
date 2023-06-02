@@ -8,11 +8,33 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List
 
 import torch
+from datasets import Dataset
 from transformers import PreTrainedTokenizerFast
 
 if TYPE_CHECKING:
     # avoid circular imports
     from src.trainer import CustomTrainer
+
+
+def prepare_dataset_for_ppl_inference(
+    trainer: CustomTrainer,
+    dataset: Dataset,
+) -> Dataset:
+    """
+    Preprocess dataset to remove columns that are not used by the perplexity computation's
+    forward pass through the trainer model.
+
+    Args:
+        * trainer: a trainer object that was used for training the model
+        * dataset: the dataset that will be scored for perplexity
+    """
+    ignore_columns = trainer._get_ignore_columns(dataset)
+    # NOTE: ignore columns should contain special_tokens_mask because these are
+    # always returned by the fast pretrained tokenizer
+    assert "special_tokens_mask" in ignore_columns
+    ignore_columns.remove("special_tokens_mask")
+
+    return dataset.remove_columns(ignore_columns)
 
 
 def compute_trainer_perplexity(

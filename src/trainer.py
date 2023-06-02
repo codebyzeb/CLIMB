@@ -29,7 +29,10 @@ from transformers.utils import get_full_repo_name
 # Model Loading
 from src.models import load_base_model
 from src.utils.data import base_collate_fn
-from src.utils.inference import compute_trainer_perplexity
+from src.utils.inference import (
+    compute_trainer_perplexity,
+    prepare_dataset_for_ppl_inference,
+)
 
 # typing imports
 from .config import BabyLMConfig
@@ -450,6 +453,9 @@ class CustomTrainer(Trainer):
 
         perplexities = []
         with torch.no_grad():
+
+            eval_subset = prepare_dataset_for_ppl_inference(self, eval_subset)
+
             inference_dataloader = DataLoader(
                 eval_subset,  # type: ignore
                 batch_size=32,
