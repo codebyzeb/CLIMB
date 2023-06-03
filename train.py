@@ -30,6 +30,9 @@ cs.store(name="base_config", node=BabyLMConfig)
 logger = logging.getLogger(__name__)
 
 DRY_RUN_SUBSAMPLE_FACTOR = 1000 // (10 if torch.cuda.device_count() > 1 else 1)
+DRY_RUN_TRAIN_STEPS = 100
+DRY_RUN_WARMUP_STEPS = 10
+DIFFICULTY_SCORER_UPDATE = 75
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -46,6 +49,31 @@ def main(cfg: BabyLMConfig):
 
     # Set seed
     set_seed(cfg.experiment.seed)
+
+    if cfg.experiment.dry_run:
+        logger.info(
+            "Running in dry run mode -- overriding config with values: "
+        )
+        logger.info(f"\t max_training_steps: {DRY_RUN_TRAIN_STEPS}")
+        logger.info(f"\t num_warmup_steps: {DRY_RUN_WARMUP_STEPS}")
+        cfg.trainer.max_training_steps = DRY_RUN_TRAIN_STEPS
+        cfg.trainer.num_warmup_steps = DRY_RUN_WARMUP_STEPS
+
+        if (
+            cfg.data_curriculum is not None
+            and cfg.data_curriculum.difficulty_scorer_kwargs is not None
+        ):
+
+            if (
+                cfg.data_curriculum.difficulty_scorer_kwargs.get("update")
+                is not None
+            ):
+                cfg.data_curriculum.difficulty_scorer_kwargs[
+                    "update"
+                ] = DIFFICULTY_SCORER_UPDATE
+                logger.info(
+                    f"\t data curriculum difficulty scorer update: {DIFFICULTY_SCORER_UPDATE}"
+                )
 
     # Loading dataset
     logger.info("Loading dataset")
@@ -97,7 +125,7 @@ def main(cfg: BabyLMConfig):
     )
 
     # Setting up wandb
-    if cfg.experiment.dry_run:
+    if cfg.experiment.offline_run:
         os.environ["WANDB_DISABLED"] = "true"
         os.environ["WANDB_MODE"] = "disabled"
     else:
@@ -136,24 +164,22 @@ def main(cfg: BabyLMConfig):
         // 100,  # log every 1% of training
         run_name=cfg.experiment.name,
         report_to=["wandb"]
-        if not cfg.experiment.dry_run
-        else None,  # wandb deactivated for dry runs
-        save_strategy="no" if cfg.experiment.dry_run else "steps",
+        if not cfg.experiment.offline_run
+        else None,  # wandb deactivated for offline runs
+        save_strategy="steps",
         hub_strategy="every_save",
-        push_to_hub=not cfg.experiment.dry_run,
+        push_to_hub=not cfg.experiment.offline_run,
         hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
-        if not cfg.experiment.dry_run
+        if not cfg.experiment.offline_run
         else None,
         hub_token=os.environ["HF_WRITE_TOKEN"]
-        if not cfg.experiment.dry_run
+        if not cfg.experiment.offline_run
         else None,
         dataloader_drop_last=cfg.data_curriculum
         is not None,  # NOTE: This is to ensure that the curriculum is not broken on the last batch
         remove_unused_columns=False,
-        load_best_model_at_end=not cfg.experiment.dry_run,
-        metric_for_best_model="eval_perplexity_mean"
-        if not cfg.experiment.dry_run
-        else None,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_perplexity_mean",
         ddp_find_unused_parameters=False,
     )
 
@@ -169,12 +195,11 @@ def main(cfg: BabyLMConfig):
     )
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
 
-    if not cfg.experiment.dry_run:
-        # passing load_best_model_at_end=True to the trainer will load the best model at
-        # the end of training, so we don't need to do it here
-        trainer.save_model(
-            output_dir=os.path.join(training_args.output_dir, "best_model")
-        )
+    # passing load_best_model_at_end=True to the trainer will load the best model at
+    # the end of training, so we don't need to do it here
+    trainer.save_model(
+        output_dir=os.path.join(training_args.output_dir, "best_model")
+    )
 
 
 if __name__ == "__main__":

@@ -259,7 +259,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 # since we pass the data through the model
 
                 dataset = prepare_dataset_for_ppl_inference(
-                    self._trainer, dataset
+                    self.trainer, dataset
                 )
 
                 data_cl_logger.info(
