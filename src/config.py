@@ -17,8 +17,11 @@ class ExperimentParams(DictConfig):
     # analogous to 'project' in wandb
     group: str = MISSING
 
-    # whether to run the experiment only locally
+    # whether to run a minimal version of the experiment
     dry_run: bool = False
+
+    # whether to run the experiment only offline
+    offline_run: bool = False
 
 
 @dataclass
