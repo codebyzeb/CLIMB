@@ -47,7 +47,6 @@ class DataPreprocessingParams(DictConfig):
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
     max_input_length: int
-    concat_input: bool
     callback_functions: Optional[List[str]] = None
 
 
