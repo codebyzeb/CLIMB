@@ -335,8 +335,11 @@ class CustomTrainer(Trainer):
         assert self.train_dataset is not None
 
         # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
-        # training, we only remove the filename column here. We will remove the other columns in a
-        # postprocessing step (after the objective function collation).
+        # training, we only remove the filename column here.
+        # The other columns in the datast should now be either of type float or int
+        # (filename is the only str column).
+        # We will remove the other columns in a postprocessing step (after the objective
+        # function collation).
 
         train_sampler = self._get_train_sampler()
 

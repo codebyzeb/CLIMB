@@ -16,7 +16,6 @@ experiment:
 
 data_preprocessing:
   include_punctuation: True
-  concat_input: True
   max_input_length: 128
 
 trainer: 
