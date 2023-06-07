@@ -390,19 +390,27 @@ class CustomTrainer(Trainer):
         )
 
     def compute_loss(self, model, inputs, **kwargs):
-        base_model_outputs = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-        )
-        base_model_hidden_states = base_model_outputs[0]
+        """
+        We compute the loss for each objective unit, and then sum them up.
+        """
 
-        # NOTE: We need to compute the loss for each objective unit, and then sum them up.
         total_loss = torch.tensor(0.0).to(self.args.device)
+
+        loss_metrics = {}
 
         for unit_name, unit in self.objective_curriculum[
             self.state.global_step
         ].items():
-            total_loss += unit.compute_loss(base_model_hidden_states, inputs)
+            unit_loss = unit.compute_loss(model, inputs)
+
+            # averaging over the processes
+            total_unit_loss_scalar = self._nested_gather(unit_loss).mean().item()  # type: ignore
+            loss_metrics[f"loss_{unit_name}"] = total_unit_loss_scalar
+
+            total_loss += unit_loss
+
+        self.log(loss_metrics)
+
         return total_loss
 
     def evaluate(
