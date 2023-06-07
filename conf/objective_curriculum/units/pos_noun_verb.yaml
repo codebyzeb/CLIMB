@@ -1,4 +1,4 @@
-mlm: 
+pos_noun_verb: 
   task_head_params: {
     "hidden_size": 256,
   }
@@ -10,5 +10,7 @@ mlm:
   scheduler_params: {}
 
   optional_kwargs: { 
-    "mask_probability": 0.15
+    "pos_tags": ["NOUN", "VERB"],
+    "mask_probability_pos": 0.4,
+    "mask_probability_other": 0.15,
   }
