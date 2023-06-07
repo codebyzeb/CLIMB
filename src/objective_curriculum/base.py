@@ -4,7 +4,6 @@ training along with information about at what point in the training process each
 should be used.
 """
 
-import os
 from typing import Mapping
 
 import torch
@@ -51,11 +50,19 @@ class ObjectiveCurriculum:
 
         # setup the different curiculum units
         for unit_name in self._curriculum_cfg.units:
-            if unit_name not in TASK_UNIT_REGISTRY:
-                raise ValueError(f"Unknown curriculum unit {unit_name}")
 
-            self.units[unit_name] = TASK_UNIT_REGISTRY[unit_name](
+            if "pos" in unit_name:
+                # the unit_name might be pos_(+pos tag identifiers)
+                task_name = "pos"
+            else:
+                task_name = unit_name
+
+            if task_name not in TASK_UNIT_REGISTRY:
+                raise ValueError(f"Unknown curriculum task unit: {task_name}")
+
+            self.units[unit_name] = TASK_UNIT_REGISTRY[task_name](
                 tokenizer=tokenizer,
+                task_unit_name=unit_name,
                 task_unit_params=self._curriculum_cfg.units[unit_name],
                 task_num_steps=int(
                     self.max_steps
@@ -140,6 +147,9 @@ class ObjectiveCurriculum:
                 return False
 
             curr_end_target = steps[1]
+
+            if curr_end_target == 1:
+                break
 
         if curr_end_target < 1:
             return False
