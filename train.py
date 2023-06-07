@@ -116,7 +116,6 @@ def main(cfg: BabyLMConfig):
             range(0, train_dataset.num_rows, DRY_RUN_SUBSAMPLE_FACTOR)
         )
 
-    data_preprocessor.concat_input = False
     eval_dataset = dataset["validation"].map(
         data_preprocessor,
         batched=True,
