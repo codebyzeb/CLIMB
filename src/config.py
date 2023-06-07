@@ -79,9 +79,6 @@ class TrainerParams(DictConfig):
 ## Objective curriculum learning parameters ##
 @dataclass
 class ObjectiveCurriculumUnitParams(DictConfig):
-    # any curriculum requires the following parameters
-
-    mask_probability: float
 
     # parameters for the task head architecture
     task_head_params: Optional[Dict[str, Any]] = field(default_factory=dict)
