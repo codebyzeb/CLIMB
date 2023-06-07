@@ -111,7 +111,6 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
             raise ValueError(
                 f"No Active Curriculum at step {self.loader.global_stepnum}"
             )
-
         elif len(active_objective_units) == 1:
             collate_fn = list(active_objective_units.values())[
                 0
@@ -123,6 +122,8 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
                     for task_unit_name, task_unit in active_objective_units.items()
                 },
             )
+
+            # NOTE: Make sure we return POS from the collator and also that we aren't overridign the input_ids
 
         self._dataset_fetcher = _DatasetKind.create_fetcher(
             self._dataset_kind,
@@ -140,12 +141,11 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
 
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
-            data["input_ids"] = self.loader.vocabulary_map.map_tokens(
-                data, "input_ids", self.loader.global_stepnum
-            )
 
             for data_key in data.keys():
-                if data_key.startswith("labels"):
+                if data_key.startswith("labels") or data_key.startswith(
+                    "input_ids"
+                ):
                     # Map the labels for each objective function to <unk> if they are not in
                     # the vocabulary
 
