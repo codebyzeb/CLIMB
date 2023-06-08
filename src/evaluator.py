@@ -40,8 +40,7 @@ class BlimpEvaluator(object):
         """
         Runs the BLIMP evaluation pipeline.
 
-        NOTE: If we are using DDP, this function will run on all the processes, wait for all of
-        them to finish, and then return None for all but the first process (process_index == 0).
+        NOTE: If we are using DDP, this function will run on all the processes.
         """
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
@@ -60,9 +59,6 @@ class BlimpEvaluator(object):
         if self.world_size > 1:
             dist.barrier()
 
-        if self.process_index != 0:
-            return
-
         # Iterate through all directories in out_dir/zeroshot
         # and get the accuracies from the eval_results.json files
         logger.info("Evaluation script finished. Getting accuracies...")
@@ -76,6 +72,13 @@ class BlimpEvaluator(object):
                 accuracies[task] = json.load(f)["eval_accuracy"]
 
         # Delete the zeroshot directory
-        shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
+        try:
+            shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
+        except FileNotFoundError:
+            # Was deleted by another process
+            if self.world_size == 1:
+                raise FileNotFoundError(
+                    "The zeroshot directory was not found. This should not happen."
+                )
 
         return accuracies
