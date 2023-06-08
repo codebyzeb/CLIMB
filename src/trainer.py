@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from huggingface_hub.hf_api import create_repo
 from huggingface_hub.repository import Repository
 from omegaconf import OmegaConf
@@ -21,10 +22,13 @@ from tqdm import tqdm
 
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
-from transformers.modeling_utils import unwrap_model
+from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
-from transformers.training_args import TrainingArguments
-from transformers.utils import get_full_repo_name
+from transformers.training_args import ParallelMode, TrainingArguments
+from transformers.utils import (
+    get_full_repo_name,
+    is_torch_neuroncore_available,
+)
 
 # Model Loading
 from src.models import load_base_model
@@ -506,13 +510,12 @@ class CustomTrainer(Trainer):
             dist.all_gather(gathered_perplexity_std, perplexity_std)
 
         # if main process
-        if self.args.process_index == 0:
-            metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
-                torch.tensor(perplexities)
-            ).item()
-            metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
-                torch.tensor(perplexities)
-            ).item()
+        metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
+            torch.tensor(perplexities)
+        ).item()
+        metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
+            torch.tensor(perplexities)
+        ).item()
 
         # Additional behaviour - evaluate on BLIMP
         logging.info("Evaluating on BLIMP...")
@@ -528,12 +531,6 @@ class CustomTrainer(Trainer):
             dry_run=self.dry_run,
         )
         evaluator_metrics = evaluator()
-
-        # NOTE: At this point, the main process should have all the metrics from all processes.
-        # All processes that are not the main process can now return from this method.
-
-        if self.args.process_index != 0:
-            return {}
 
         assert evaluator_metrics is not None
 
@@ -610,15 +607,37 @@ class CustomTrainer(Trainer):
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
 
-    def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None):
-        """
-        Loads in the base model as well as the task heads from the checkpoint. For each task head,
-        we also load in the optimizer state and the scheduler state (For the base model this
-        is handled by the Trainer class at a later point).
+    def _wrap_model(self, model, training=True, dataloader=None):
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+            kwargs = {}
+            if self.args.ddp_find_unused_parameters is not None:
+                kwargs[
+                    "find_unused_parameters"
+                ] = self.args.ddp_find_unused_parameters
+            elif isinstance(model, PreTrainedModel):
+                # find_unused_parameters breaks checkpointing as per
+                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                kwargs[
+                    "find_unused_parameters"
+                ] = not model.is_gradient_checkpointing
+            else:
+                kwargs["find_unused_parameters"] = True
 
-        Args:
-            * resume_from_checkpoint (str): The path to the checkpoint to resume from.
-            * model (Optional[PreTrainedModel]): The model to load the checkpoint into. If None,
-        """
+            if self.args.ddp_bucket_cap_mb is not None:
+                kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+            if is_torch_neuroncore_available():
+                return model
+            if any(p.requires_grad for p in model.parameters()):
+                model = nn.parallel.DistributedDataParallel(
+                    model,
+                    device_ids=[self.args.local_rank]
+                    if self.args._n_gpu != 0
+                    else None,
+                    output_device=self.args.local_rank
+                    if self.args._n_gpu != 0
+                    else None,
+                    broadcast_buffers=False,  # NOTE: Important for DDP with obj. curriculum
+                    **kwargs,
+                )
 
-        super()._load_from_checkpoint(resume_from_checkpoint, model)
+        return model
