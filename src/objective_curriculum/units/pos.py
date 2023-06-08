@@ -12,7 +12,9 @@ from transformers import (
     RobertaConfig,
     get_linear_schedule_with_warmup,
 )
-from transformers.models.roberta.modeling_roberta import RobertaLMHead
+from transformers.models.roberta_prelayernorm.modeling_roberta_prelayernorm import (
+    RobertaPreLayerNormLMHead,
+)
 
 from src.utils.data import POS_TAG_MAP, base_collate_fn
 
@@ -159,7 +161,9 @@ class POSTask(BaseTaskUnit):
             **self.task_unit_params["task_head_params"],
         )
 
-        self._pos_head = RobertaLMHead(pos_head_config).to(self.device)
+        self._pos_head = RobertaPreLayerNormLMHead(pos_head_config).to(
+            self.device
+        )
 
         if self.local_rank != -1:
             self._pos_head = DistributedDataParallel(
