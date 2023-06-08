@@ -573,9 +573,10 @@ class CustomTrainer(Trainer):
         lm_model = load_base_model(lm_config)
 
         # unwrapping the base model and the mlm task head and copying that over into the lm model
-
         lm_model.roberta_prelayernorm = unwrap_model(self.model)
-        lm_model.lm_head = self.objective_curriculum.units["mlm"].task_head
+        lm_model.lm_head = unwrap_model(
+            self.objective_curriculum.units["mlm"].task_head
+        )
 
         return lm_model
 
@@ -603,6 +604,7 @@ class CustomTrainer(Trainer):
             # save the full language model + the associated tokenizer (for inference)
             lm_model = self._initialize_full_lm_model()
             lm_model.save_pretrained(mlm_model_dir)
+
             self.tokenizer.save_pretrained(mlm_model_dir)
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
