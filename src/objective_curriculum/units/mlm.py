@@ -10,7 +10,9 @@ from transformers import (
     RobertaConfig,
     get_linear_schedule_with_warmup,
 )
-from transformers.models.roberta.modeling_roberta import RobertaLMHead
+from transformers.models.roberta_prelayernorm.modeling_roberta_prelayernorm import (
+    RobertaPreLayerNormLMHead,
+)
 
 from .base_task import BaseTaskUnit
 from .registry import register_task_unit
@@ -62,7 +64,9 @@ class MLMTask(BaseTaskUnit):
             **self.task_unit_params["task_head_params"],
         )
 
-        self._mlm_head = RobertaLMHead(mlm_head_config).to(self.device)
+        self._mlm_head = RobertaPreLayerNormLMHead(mlm_head_config).to(
+            self.device
+        )
 
         if self.local_rank != -1:
             self._mlm_head = DistributedDataParallel(

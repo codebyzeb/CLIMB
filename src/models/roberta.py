@@ -4,27 +4,27 @@ from .registry import register_model
 Model classes use the Roberta Architecture 
 """
 
+from transformers import RobertaConfig
+from transformers import RobertaModel as _RobertaModel
+from transformers import RobertaPreLayerNormConfig
 from transformers import (
-    RobertaConfig,
-    RobertaModel,
-    RobertaPreLayerNormConfig,
-    RobertaPreLayerNormForMaskedLM,
-    RobertaPreLayerNormModel,
+    RobertaPreLayerNormForMaskedLM as _RobertaPreLayerNormForMaskedLM,
 )
+from transformers import RobertaPreLayerNormModel as _RobertaPreLayerNormModel
 
 ### Wrapping the Roberta models to make them compatible with the model registry ###
 
 
 @register_model("roberta_pre_layer_norm_mlm", RobertaPreLayerNormConfig)
-class BaseRobertaPreLayerNormMLMModel(RobertaPreLayerNormForMaskedLM):
+class RobertaPreLayerNormForMaskedLM(_RobertaPreLayerNormForMaskedLM):
     pass
 
 
 @register_model("roberta_pre_layer_norm", RobertaPreLayerNormConfig)
-class BaseRobertaPreLayerNormModel(RobertaPreLayerNormModel):
+class RobertaPreLayerNormModel(_RobertaPreLayerNormModel):
     pass
 
 
 @register_model("roberta", RobertaConfig)
-class BaseRobertModel(RobertaModel):
+class RobertaModel(_RobertaModel):
     pass
