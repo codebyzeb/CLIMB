@@ -53,7 +53,7 @@ from .data_curriculum.pacing_fn import get_pacing_fn
 from .dataloader import CurriculumDataLoader
 
 # Model Evaluation
-from .evaluator import BlimpEvaluator
+from .evaluator import BlimpEvaluator, GlueEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -121,6 +121,8 @@ class CustomTrainer(Trainer):
 
         self.experiment_group = hydra_config.experiment.group
         self.experiment_name = hydra_config.experiment.name
+        self.eval_blimp = hydra_config.trainer.eval_blimp
+        self.eval_glue = hydra_config.trainer.eval_glue
 
         super().__init__(args=args, **kwargs)
 
@@ -381,9 +383,9 @@ class CustomTrainer(Trainer):
 
         return CurriculumDataLoader(
             global_stepnum=self.state.global_step,
-            objective_curriculum=self.objective_curriculum,
+            objective_curriculum=self.objective_curriculum, # type: ignore
             tokenizer=self.tokenizer,
-            vocabulary_map=vocabulary_map,
+            vocabulary_map=vocabulary_map, # type: ignore
             ignore_columns=ignore_columns,
             dataset=train_dataset,
             sampler=train_sampler,
@@ -517,22 +519,40 @@ class CustomTrainer(Trainer):
             torch.tensor(perplexities)
         ).item()
 
-        # Additional behaviour - evaluate on BLIMP
-        logging.info("Evaluating on BLIMP...")
         self.save_model(self.args.output_dir, _internal_call=True)
 
-        inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
+        evaluator_metrics = {}
 
-        evaluator = BlimpEvaluator(
-            inference_model_dir,
-            device=self.args.device,
-            process_index=self.args.process_index,  # world (global) process index
-            world_size=self.args.world_size,
-            dry_run=self.dry_run,
-        )
-        evaluator_metrics = evaluator()
+        # Additional behaviour - evaluate on BLIMP
+        if self.eval_blimp:
+            logging.info("Evaluating on BLIMP...")
+            inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
-        assert evaluator_metrics is not None
+            evaluator = BlimpEvaluator(
+                inference_model_dir,
+                device=self.args.device,
+                process_index=self.args.process_index,  # world (global) process index
+                world_size=self.args.world_size,
+                dry_run=self.dry_run,
+            )
+            evaluator_metrics.update(evaluator()) # type: ignore
+
+        if self.eval_glue:
+            logging.info("Evaluating on GLUE...")
+            glue_evaluator = GlueEvaluator(
+                self.args.output_dir,
+                device=self.args.device,
+                process_index=self.args.process_index,  # world (global) process index
+                world_size=self.args.world_size,
+                dry_run=self.dry_run,
+            )
+            evaluator_metrics.update(glue_evaluator()) # type: ignore
+
+        # NOTE: At this point, the main process should have all the metrics from all processes.
+        # All processes that are not the main process can now return from this method.
+
+        if self.args.process_index != 0:
+            return {}
 
         for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
