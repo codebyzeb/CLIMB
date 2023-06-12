@@ -383,9 +383,9 @@ class CustomTrainer(Trainer):
 
         return CurriculumDataLoader(
             global_stepnum=self.state.global_step,
-            objective_curriculum=self.objective_curriculum, # type: ignore
+            objective_curriculum=self.objective_curriculum,  # type: ignore
             tokenizer=self.tokenizer,
-            vocabulary_map=vocabulary_map, # type: ignore
+            vocabulary_map=vocabulary_map,  # type: ignore
             ignore_columns=ignore_columns,
             dataset=train_dataset,
             sampler=train_sampler,
@@ -526,16 +526,18 @@ class CustomTrainer(Trainer):
         # Additional behaviour - evaluate on BLIMP
         if self.eval_blimp:
             logging.info("Evaluating on BLIMP...")
-            inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
+            inference_model_dir = os.path.join(
+                self.args.output_dir, "lm_model"
+            )
 
-            evaluator = BlimpEvaluator(
+            blimp_evaluator = BlimpEvaluator(
                 inference_model_dir,
                 device=self.args.device,
                 process_index=self.args.process_index,  # world (global) process index
                 world_size=self.args.world_size,
                 dry_run=self.dry_run,
             )
-            evaluator_metrics.update(evaluator()) # type: ignore
+            evaluator_metrics.update(blimp_evaluator())  # type: ignore
 
         if self.eval_glue:
             logging.info("Evaluating on GLUE...")
@@ -546,13 +548,7 @@ class CustomTrainer(Trainer):
                 world_size=self.args.world_size,
                 dry_run=self.dry_run,
             )
-            evaluator_metrics.update(glue_evaluator()) # type: ignore
-
-        # NOTE: At this point, the main process should have all the metrics from all processes.
-        # All processes that are not the main process can now return from this method.
-
-        if self.args.process_index != 0:
-            return {}
+            evaluator_metrics.update(glue_evaluator())  # type: ignore
 
         for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):

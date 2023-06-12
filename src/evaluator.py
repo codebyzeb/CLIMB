@@ -11,6 +11,8 @@ from typing import Any, Dict, Union
 import torch
 import torch.distributed as dist
 
+from src.utils.setup import TORCH_RUN_ENV_KEYS
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +46,7 @@ class BlimpEvaluator(object):
         """
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
-        logger.info("Running evaluation script...")
+        logger.info("Running BLIMP evaluation script...")
         cmd = (
             "cd lib/evaluation-pipeline; ../../env/bin/python babylm_eval.py ../../"
             + self.out_dir
@@ -52,7 +54,7 @@ class BlimpEvaluator(object):
             + f" --device {self.device}"
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
-            + (' --dry_run True' if self.dry_run else '')
+            + (" --dry_run True" if self.dry_run else "")
         )
         subprocess.run(cmd, shell=True)
 
@@ -82,9 +84,24 @@ class BlimpEvaluator(object):
                 )
 
         return accuracies
-GLUE_TASKS = ["cola","sst2","mrpc","qqp","mnli","mnli-mm","qnli","rte","boolq","multirc","wsc"]
+
 
 class GlueEvaluator(object):
+
+    GLUE_TASKS = [
+        "cola",
+        "sst2",
+        "mrpc",
+        "qqp",
+        "mnli",
+        "mnli-mm",
+        "qnli",
+        "rte",
+        "boolq",
+        "multirc",
+        "wsc",
+    ]
+
     def __init__(
         self,
         out_dir: str,
@@ -105,10 +122,12 @@ class GlueEvaluator(object):
         self.dry_run = dry_run
 
     def run_script(self, task: str):
-        
-        os.makedirs(os.path.join(self.out_dir, "finetune", task), exist_ok=True)
+
+        os.makedirs(
+            os.path.join(self.out_dir, "finetune", task), exist_ok=True
+        )
         logger.info(f"Running finetuning script for {task}...")
-        
+
         if task == "mnli":
             valid_name = "validation_matched"
             out_dir = "mnli"
@@ -121,18 +140,18 @@ class GlueEvaluator(object):
             out_dir = task
 
         cmd = (
-            "cd lib/evaluation-pipeline; ../../env/bin/python finetune_classification.py" 
+            "cd lib/evaluation-pipeline; ../../env/bin/python finetune_classification.py"
             + f" --model_name_or_path ../../{self.out_dir}"
             + f" --output_dir ../../{self.out_dir}/finetune/{out_dir}"
             + f" --train_file filter-data/glue_filtered/{task}.train.json"
             + f" --validation_file filter-data/glue_filtered/{task}.{valid_name}.json"
             + f" --do_train"
             # + f" --do_eval" # Don't evaluate during training
-            + f" --use_fast_tokenizer True" # Set to True to use fast tokenizer
+            + f" --use_fast_tokenizer True"  # Set to True to use fast tokenizer
             + f" --max_seq_length 128"
             + f" --per_device_train_batch_size 64"
             + f" --learning_rate 5e-5"
-            + f" --num_train_epochs 1" # Only train for one epoch
+            + f" --num_train_epochs 1"  # Only train for one epoch
             + f" --evaluation_strategy steps"
             + f" --patience 10"
             + f" --eval_every 2000"
@@ -140,8 +159,17 @@ class GlueEvaluator(object):
             + f" --overwrite_output_dir"
             + f" --seed 32"
         )
+
+        # print all the key names of the envrioment variables
+
+        subprocess_env = os.environ.copy()
+        # remove from subprocess_env all torch_run related variables
+        for key in list(subprocess_env.keys()):
+            if key in TORCH_RUN_ENV_KEYS:
+                del subprocess_env[key]
+
         logging.info(f"Running command: {cmd}")
-        subprocess.run(cmd, shell=True)
+        subprocess.run(cmd, shell=True, env=subprocess_env)
         logging.info(f"Finished finetuning {task}.")
 
     def __call__(self) -> Union[Dict[str, Any], None]:
@@ -151,21 +179,22 @@ class GlueEvaluator(object):
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
         logger.info("Running GLUE evaluation script...")
-        if self.process_index == 0:
-            for task in GLUE_TASKS[:1 if self.dry_run else None]:
-                self.run_script(task)
+
+        glue_tasks = self.GLUE_TASKS[:1] if self.dry_run else self.GLUE_TASKS
+
+        for task_idx, task in enumerate(glue_tasks):
+            if task_idx % self.world_size != self.process_index:
+                continue
+            self.run_script(task)
 
         if self.world_size > 1:
             dist.barrier()
-            
-        if self.process_index != 0: 
-            return
 
         # Iterate through all directories in out_dir/zeroshot
         # and get the accuracies from the eval_results.json files
         logger.info("GLUE Evaluation script finished. Getting accuracies...")
         accuracies = {}
-        f1s = {}
+
         for task in os.listdir(os.path.join(self.out_dir, "finetune")):
             with open(
                 os.path.join(
@@ -173,7 +202,7 @@ class GlueEvaluator(object):
                 )
             ) as f:
                 data = json.load(f)
-                accuracies[task + '_accuracy'] = data["eval_accuracy"]
-                accuracies[task + '_f1'] = data["eval_f1"]
+                accuracies[task + "_accuracy"] = data["eval_accuracy"]
+                accuracies[task + "_f1"] = data["eval_f1"]
 
         return accuracies
