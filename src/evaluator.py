@@ -71,7 +71,7 @@ class BlimpEvaluator(object):
                     self.out_dir, "zeroshot", task, "eval_results.json"
                 )
             ) as f:
-                accuracies[task] = json.load(f)["eval_accuracy"]
+                accuracies["blimp_" + task] = json.load(f)["eval_accuracy"]
 
         if self.world_size > 1:
             # Make sure all processes have finished before removing zeroshot directory
@@ -155,10 +155,10 @@ class GlueEvaluator(object):
             + f" --max_seq_length 128"
             + f" --per_device_train_batch_size 64"
             + f" --learning_rate 5e-5"
-            + f" --num_train_epochs 1"  # Only train for one epoch
+            + f" --num_train_epochs 2"  # Train for two epochs
             + f" --evaluation_strategy steps"
             + f" --patience 10"
-            + f" --eval_every 2000"
+            + f" --eval_every 3000"
             + f" --eval_steps 2000"
             + f" --overwrite_output_dir"
             + f" --seed 32"
@@ -210,8 +210,9 @@ class GlueEvaluator(object):
                 )
             ) as f:
                 data = json.load(f)
-                accuracies[task + "_accuracy"] = data["eval_accuracy"]
-                accuracies[task + "_f1"] = data["eval_f1"]
+                accuracies["glue_" + task + "_accuracy"] = data["eval_accuracy"]
+                if "eval_f1" in data:
+                    accuracies["glue_" + task + "_f1"] = data["eval_f1"]
 
         if self.world_size > 1:
             dist.barrier()

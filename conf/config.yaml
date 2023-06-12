@@ -24,4 +24,4 @@ trainer:
   num_warmup_steps: 14_000
   max_training_steps: 100_000
   eval_blimp: True
-  eval_glue: False
+  eval_glue: True
