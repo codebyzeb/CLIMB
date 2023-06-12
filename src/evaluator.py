@@ -213,4 +213,17 @@ class GlueEvaluator(object):
                 accuracies[task + "_accuracy"] = data["eval_accuracy"]
                 accuracies[task + "_f1"] = data["eval_f1"]
 
+        if self.world_size > 1:
+            dist.barrier()
+
+        # Delete the finetune directory
+        try:
+            shutil.rmtree(os.path.join(self.out_dir, "finetune"))
+        except FileNotFoundError:
+            # Was deleted by another process
+            if self.world_size == 1:
+                raise FileNotFoundError(
+                    "The finetune directory was not found. This should not happen."
+                )
+
         return accuracies

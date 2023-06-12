@@ -520,16 +520,15 @@ class CustomTrainer(Trainer):
         ).item()
 
         self.save_model(self.args.output_dir, _internal_call=True)
+        dist.barrier()  # Ensure all processes have access to the same model
 
         evaluator_metrics = {}
+
+        inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
         # Additional behaviour - evaluate on BLIMP
         if self.eval_blimp:
             logging.info("Evaluating on BLIMP...")
-            inference_model_dir = os.path.join(
-                self.args.output_dir, "lm_model"
-            )
-
             blimp_evaluator = BlimpEvaluator(
                 inference_model_dir,
                 device=self.args.device,
@@ -542,7 +541,7 @@ class CustomTrainer(Trainer):
         if self.eval_glue:
             logging.info("Evaluating on GLUE...")
             glue_evaluator = GlueEvaluator(
-                self.args.output_dir,
+                inference_model_dir,
                 device=self.args.device,
                 process_index=self.args.process_index,  # world (global) process index
                 world_size=self.args.world_size,
