@@ -11,6 +11,23 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+TORCH_RUN_ENV_KEYS = [
+    "LOCAL_RANK",
+    "RANK",
+    "GROUP_RANK",
+    "ROLE_RANK",
+    "LOCAL_WORLD_SIZE",
+    "WORLD_SIZE",
+    "ROLE_WORLD_SIZE",
+    "MASTER_PORT",
+    "MASTER_ADDR",
+    "TORCHELASTIC_RESTART_COUNT",
+    "TORCHELASTIC_MAX_RESTARTS",
+    "TORCHELASTIC_RUN_ID",
+    "PYTHON_EXEC",
+]
+
+
 def set_seed(seed: int) -> None:
     """Sets seed for reproducibility"""
     if seed < 0:
