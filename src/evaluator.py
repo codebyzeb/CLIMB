@@ -73,6 +73,10 @@ class BlimpEvaluator(object):
             ) as f:
                 accuracies[task] = json.load(f)["eval_accuracy"]
 
+        if self.world_size > 1:
+            # Make sure all processes have finished before removing zeroshot directory
+            dist.barrier()
+
         # Delete the zeroshot directory
         try:
             shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
@@ -167,6 +171,10 @@ class GlueEvaluator(object):
         for key in list(subprocess_env.keys()):
             if key in TORCH_RUN_ENV_KEYS:
                 del subprocess_env[key]
+
+        # Disable W&B on subprocess
+        subprocess_env["WANDB_DISABLED"] = "true"
+        subprocess_env["WANDB_MODE"] = "disabled"
 
         logging.info(f"Running command: {cmd}")
         subprocess.run(cmd, shell=True, env=subprocess_env)
