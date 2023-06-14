@@ -1,8 +1,0 @@
-# @package _global_
-# defaults:
-
-# define sweep paramters  
-hydra:
-  sweeper:
-    params:
-

@@ -1,0 +1,26 @@
+# @package _global_
+defaults:
+  - override /data_curriculum: None
+  - override /vocabulary_curriculum: None
+  - override /data_curriculum/pacing_fn_kwargs/start_percent: 0.1
+  - override /data_curriculum/pacing_fn_kwargs/starting_difficulty: 0.1
+  - override /data_curriculum/pacing_fn_kwargs/max_difficulty: 1.0
+
+
+# define sweep paramters  
+hydra:
+  sweeper:
+    params:
+      # data curriculum
+      # TODO: nly want to sweep spoken first if difficulty scorer name is data split
+      data_curriculum.difficulty_scorer_name: 
+        choice(None, "self_perplexity", "data_split")
+      data_curriculum.difficulty_scorer_kwargs.spoken_first: 
+        choice(True, False)
+      data_curriculum.pacing_fn_name: 
+        choice("linear", "exp", "log")
+      data_curriculum.pacing_fn_kwargs.end_percent: 
+        choice(0.5, 0.65, 0.8, 0.95)
+
+      
+
