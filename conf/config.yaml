@@ -5,8 +5,8 @@ defaults:
   - tokenizer: tuned
   - model: babyberta
   - objective_curriculum: base_mlm
-  - data_curriculum: linear_perplexity
-  - vocabulary_curriculum: linear_token_ids
+  - data_curriculum: linear_data_split
+  - vocabulary_curriculum: linear_pos_tags_and_token_ids
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'
@@ -16,7 +16,6 @@ experiment:
 
 data_preprocessing:
   include_punctuation: True
-  concat_input: True
   max_input_length: 128
 
 trainer: 
@@ -24,3 +23,5 @@ trainer:
   lr: 1e-4 # 1e-4 is used in fairseq; 1e-3 is default in huggingface
   num_warmup_steps: 14_000
   max_training_steps: 100_000
+  eval_blimp: True
+  eval_glue: True

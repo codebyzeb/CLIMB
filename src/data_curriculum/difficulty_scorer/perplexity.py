@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Generator, List, Sequence, Tuple, Union
 
-import numpy as np
 import torch
 
 # typing imports
@@ -29,7 +28,10 @@ from tqdm import tqdm
 from src.utils.data import SequentialSubsetSampler, base_collate_fn
 
 # Perplexity Computation
-from src.utils.inference import compute_trainer_perplexity
+from src.utils.inference import (
+    compute_trainer_perplexity,
+    prepare_dataset_for_ppl_inference,
+)
 
 from .base_difficulty_scorer import BaseDifficultyScorer
 from .registry import register_difficulty_scorer
@@ -48,31 +50,18 @@ class PerplexityBaseClass(BaseDifficultyScorer):
     def tokenizer(self, tokenizer: PreTrainedTokenizerFast):
         self._tokenizer = tokenizer
 
-    def convert_difficulty_scores_to_percentiles(
-        self,
-        difficulty_scores: Sequence[float],
-        max_difficulty_percentile: float,
-    ) -> Sequence[float]:
-        max_difficulty = float(
-            np.percentile(difficulty_scores, max_difficulty_percentile * 100)
-        )
-
-        # Set difficulty scores that are above the max difficulty percentile to 0
-        _difficulty_scores = [
-            score if score <= max_difficulty else 0.0
-            for score in difficulty_scores
-        ]
-        return _difficulty_scores
-
 
 @register_difficulty_scorer("ngram_perplexity")
 class NGramPerplexityScorer(PerplexityBaseClass):
-    def __init__(self, n_gram: int, **kwargs):
+    def __init__(self, n_gram: int, train_subsample_factor: int = 1, **kwargs):
         """
         Initializes the n-gram perplexity scorer.
 
         Args:
             * n_gram (int): The n-gram to use for the n-gram model
+            * train_subsample_factor (int): The factor by which to subsample the dataset for
+                training the n-gram model. For example, if dataset_subsample_factor = 2, then
+                the n-gram model will be trained on half the dataset.
         """
 
         data_cl_logger.info("Initializing n-gram perplexity scorer")
@@ -81,7 +70,12 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
         self._tokenizer = None
 
-    def _train_model(self, dataset: Dataset):
+        self.train_subsample_factor = train_subsample_factor
+
+    def _train_model(
+        self,
+        dataset: Dataset,
+    ):
         """
         Trains a n-gram model on the dataset.
 
@@ -104,7 +98,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
                     [
                         str(_id)
                         for _id in example
-                        if _id != self.tokenizer.pad_token_id
+                        if _id != self.tokenizer.pad_token_id  # type: ignore
                     ]
                 )
 
@@ -122,7 +116,9 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         # We split the tokenized dataset into n-gram that we can feed into the n-gram model
         train_data_n_grams = (
             everygrams(sent, max_len=self.n_gram)
-            for sent in self.tokenized_text
+            for sent in self.tokenized_text[
+                0 : dataset.num_rows : self.train_subsample_factor
+            ]
         )
 
         train_vocab = [str(val) for val in self.tokenizer.vocab.values()]
@@ -161,10 +157,11 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         """
 
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
-
             self._train_model(dataset)
 
-            assert hasattr(self, "lm"), "n-gram model not trained"
+            assert hasattr(self, "lm") and hasattr(
+                self, "tokenized_text"
+            ), "n-gram model not trained"
 
             difficulty_scores: Sequence[float] = []
 
@@ -183,7 +180,6 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
-
                     perplexity = self._compute_ngram_perplexity(n_gram)
                     difficulty_scores.append(perplexity)
 
@@ -191,6 +187,8 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
                     if curr_indices_idx == len(indices):
                         break
+            else:
+                raise RuntimeError("Not all indices were scored")
 
             self._difficulty_scores = (
                 self.convert_difficulty_scores_to_percentiles(
@@ -244,7 +242,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         global_stepnum: int,
         max_difficulty_percentile: float,
     ) -> Sequence[float]:
-
         assert self.tokenizer is not None and self.trainer is not None
 
         # if this is the initial step, use the ngram model class's method
@@ -257,6 +254,13 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             return self._difficulty_scores
         else:
             if global_stepnum % self.update == 0:
+
+                # NOTE: remove keys from dataset that are not in the signature of the model,
+                # since we pass the data through the model
+
+                dataset = prepare_dataset_for_ppl_inference(
+                    self.trainer, dataset
+                )
 
                 data_cl_logger.info(
                     f"Recalculating sample weights using model at step {global_stepnum}"
@@ -282,7 +286,6 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                     )
 
                     for batch in tqdm(inference_dataloader):
-
                         batch_perplexity = compute_trainer_perplexity(
                             batch, self.tokenizer, self.trainer
                         )

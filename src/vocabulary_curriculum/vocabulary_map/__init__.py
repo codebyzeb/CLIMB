@@ -6,6 +6,10 @@ from transformers import PreTrainedTokenizerFast
 
 # typing imports
 from .base_map import BaseVocabularyMap
+from .pos_map import (
+    PartOfSpeechTokenIDVocabularyMap,
+    PartOfSpeechVocabularyMap,
+)
 from .registry import VOCABULARY_MAP_REGISTRY
 
 # importing for registry to register difficulty scorers

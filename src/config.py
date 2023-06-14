@@ -1,7 +1,7 @@
 """Defines the set of hyperparameters to be specified in the config file."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional
 
 from omegaconf import MISSING, DictConfig
 
@@ -17,8 +17,11 @@ class ExperimentParams(DictConfig):
     # analogous to 'project' in wandb
     group: str = MISSING
 
-    # whether to run the experiment only locally
+    # whether to run a minimal version of the experiment
     dry_run: bool = False
+
+    # whether to run the experiment only offline
+    offline_run: bool = False
 
 
 @dataclass
@@ -44,7 +47,6 @@ class DataPreprocessingParams(DictConfig):
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
     max_input_length: int
-    concat_input: bool
     callback_functions: Optional[List[str]] = None
 
 
@@ -69,6 +71,8 @@ class TrainerParams(DictConfig):
     lr: float
     num_warmup_steps: int
     max_training_steps: int
+    eval_blimp: bool
+    eval_glue: bool
 
 
 ### Curriculum learning parameter: can be either objective or data-driven ###
@@ -77,9 +81,6 @@ class TrainerParams(DictConfig):
 ## Objective curriculum learning parameters ##
 @dataclass
 class ObjectiveCurriculumUnitParams(DictConfig):
-    # any curriculum requires the following parameters
-
-    mask_probability: float
 
     # parameters for the task head architecture
     task_head_params: Optional[Dict[str, Any]] = field(default_factory=dict)
@@ -92,6 +93,7 @@ class ObjectiveCurriculumUnitParams(DictConfig):
 
     # Additional optional kwargs dependent on the objective curriculum unit
     optional_kwargs: Optional[Dict[str, Any]] = field(default_factory=dict)
+
 
 @dataclass
 class ObjectiveCurriculumParams(DictConfig):
@@ -116,14 +118,8 @@ class PacingFunctionParams(Mapping[str, Any]):
 
 
 # Difficulty Scorer Parameters
-@dataclass
-class PerplexityDifficultyScorerParams(Mapping[str, Any]):
-    # n-gram perplexity parameters
-    n_gram: int
-    update: Optional[int] = None
 
-
-DifficultyScorerKwargsType = Union[PerplexityDifficultyScorerParams, None]
+DifficultyScorerKwargsType = Optional[Dict[str, Any]]
 
 
 @dataclass

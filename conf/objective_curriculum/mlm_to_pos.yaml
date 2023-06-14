@@ -1,10 +1,10 @@
 defaults:
   - units:
     - mlm
-    - pos
+    - pos_noun_verb
 
 steps: {
-  "mlm": [0.0,0.1], 
-  "pos": [0.0,1.0]
+  "mlm": [0.0,1.0], 
+  "pos_noun_verb": [0.0,1.0]
 }
 

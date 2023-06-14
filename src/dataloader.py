@@ -111,7 +111,6 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
             raise ValueError(
                 f"No Active Curriculum at step {self.loader.global_stepnum}"
             )
-
         elif len(active_objective_units) == 1:
             collate_fn = list(active_objective_units.values())[
                 0
@@ -123,6 +122,8 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
                     for task_unit_name, task_unit in active_objective_units.items()
                 },
             )
+
+            # NOTE: Make sure we return POS from the collator and also that we aren't overridign the input_ids
 
         self._dataset_fetcher = _DatasetKind.create_fetcher(
             self._dataset_kind,
@@ -138,24 +139,23 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         if self._pin_memory:
             data = _torch_pin_memory(data, self._pin_memory_device)  # type: ignore[arg-type]
 
-        # remove ignored columns
-        if self.loader.ignore_columns is not None:
-            for ignore_column in self.loader.ignore_columns:
-                data.pop(ignore_column, None)
-
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
-            data["input_ids"] = self.loader.vocabulary_map.map_tokens(
-                data["input_ids"], self.loader.global_stepnum
-            )
 
             for data_key in data.keys():
-                if data_key.startswith("labels"):
+                if data_key.startswith("labels") or data_key.startswith(
+                    "input_ids"
+                ):
                     # Map the labels for each objective function to <unk> if they are not in
                     # the vocabulary
 
                     data[data_key] = self.loader.vocabulary_map.map_tokens(
-                        data[data_key], self.loader.global_stepnum
+                        data, data_key, self.loader.global_stepnum
                     )
+
+        # remove ignored columns
+        if self.loader.ignore_columns is not None:
+            for ignore_column in self.loader.ignore_columns:
+                data.pop(ignore_column, None)
 
         return data

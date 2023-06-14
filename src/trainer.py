@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import torch
+import torch.distributed as dist
+import torch.nn as nn
 from huggingface_hub.hf_api import create_repo
 from huggingface_hub.repository import Repository
 from omegaconf import OmegaConf
@@ -20,15 +22,21 @@ from tqdm import tqdm
 
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
-from transformers.modeling_utils import unwrap_model
+from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
-from transformers.training_args import TrainingArguments
-from transformers.utils import get_full_repo_name
+from transformers.training_args import ParallelMode, TrainingArguments
+from transformers.utils import (
+    get_full_repo_name,
+    is_torch_neuroncore_available,
+)
 
 # Model Loading
 from src.models import load_base_model
 from src.utils.data import base_collate_fn
-from src.utils.inference import compute_trainer_perplexity
+from src.utils.inference import (
+    compute_trainer_perplexity,
+    prepare_dataset_for_ppl_inference,
+)
 
 # typing imports
 from .config import BabyLMConfig
@@ -45,7 +53,7 @@ from .data_curriculum.pacing_fn import get_pacing_fn
 from .dataloader import CurriculumDataLoader
 
 # Model Evaluation
-from .evaluator import BlimpEvaluator
+from .evaluator import BlimpEvaluator, GlueEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -64,7 +72,6 @@ class CurriculumLearningCallback(TrainerCallback):
     """
 
     def on_step_end(self, *_, train_dataloader, **kwargs) -> None:
-
         if isinstance(
             train_dataloader.sampler,
             (CurriculumSampler, DistributedCurriculumSampler),
@@ -90,6 +97,7 @@ class CustomTrainer(Trainer):
     def __init__(
         self,
         hydra_config: BabyLMConfig,
+        dry_run: bool,
         args: TrainingArguments,
         tokenizer: PreTrainedTokenizerFast,
         **kwargs,
@@ -102,15 +110,19 @@ class CustomTrainer(Trainer):
 
         Args:
             * hydra_config: (BabyLMConfig): The config object.
+            * dry_run (bool): Whether the experiment is being run in dry run mode
             * args (TrainingArguments): The training arguments, unpacked from the kwargs dict
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
         """
 
         self.hydra_config = hydra_config
+        self.dry_run = dry_run
 
         self.experiment_group = hydra_config.experiment.group
         self.experiment_name = hydra_config.experiment.name
+        self.eval_blimp = hydra_config.trainer.eval_blimp
+        self.eval_glue = hydra_config.trainer.eval_glue
 
         super().__init__(args=args, **kwargs)
 
@@ -329,16 +341,21 @@ class CustomTrainer(Trainer):
         assert self.train_dataset is not None
 
         # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
-        # training, we only remove the text column here. We will remove the other columns in a
-        # postprocessing step (after the objective function collation).
+        # training, we only remove the filename column here.
+        # The other columns in the datast should now be either of type float or int
+        # (filename is the only str column).
+        # We will remove the other columns in a postprocessing step (after the objective
+        # function collation).
 
         train_sampler = self._get_train_sampler()
+
+        train_dataset = self.train_dataset.remove_columns("filename")  # type: ignore
 
         # NOTE: In a postprocessing step (after the objective function collation), we will still
         # need to remove columns that are not in the model signature. We need to pass in these
         # ignore columns to the dataloader so that they are not included in the batch, but we
         # might want to use this information when generating the objective.
-        ignore_columns = self._get_ignore_columns(self.train_dataset)
+        ignore_columns = self._get_ignore_columns(train_dataset)
 
         assert (
             self.tokenizer is not None
@@ -346,7 +363,6 @@ class CustomTrainer(Trainer):
 
         # Create the vocabulary map according to the tokenizer curriculum
         if self.vocabulary_curriculum_cfg:
-
             pacing_fn = get_pacing_fn(
                 self.vocabulary_curriculum_cfg.pacing_fn_name,
                 self.args.max_steps,
@@ -367,11 +383,11 @@ class CustomTrainer(Trainer):
 
         return CurriculumDataLoader(
             global_stepnum=self.state.global_step,
-            objective_curriculum=self.objective_curriculum,
+            objective_curriculum=self.objective_curriculum,  # type: ignore
             tokenizer=self.tokenizer,
-            vocabulary_map=vocabulary_map,
+            vocabulary_map=vocabulary_map,  # type: ignore
             ignore_columns=ignore_columns,
-            dataset=self.train_dataset,
+            dataset=train_dataset,
             sampler=train_sampler,
             batch_size=self._train_batch_size,
             drop_last=self.args.dataloader_drop_last,
@@ -380,20 +396,27 @@ class CustomTrainer(Trainer):
         )
 
     def compute_loss(self, model, inputs, **kwargs):
+        """
+        We compute the loss for each objective unit, and then sum them up.
+        """
 
-        base_model_outputs = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-        )
-        base_model_hidden_states = base_model_outputs[0]
-
-        # NOTE: We need to compute the loss for each objective unit, and then sum them up.
         total_loss = torch.tensor(0.0).to(self.args.device)
+
+        loss_metrics = {}
 
         for unit_name, unit in self.objective_curriculum[
             self.state.global_step
         ].items():
-            total_loss += unit.compute_loss(base_model_hidden_states, inputs)
+            unit_loss = unit.compute_loss(model, inputs)
+
+            # averaging over the processes
+            total_unit_loss_scalar = self._nested_gather(unit_loss).mean().item()  # type: ignore
+            loss_metrics[f"loss_{unit_name}"] = total_unit_loss_scalar
+
+            total_loss += unit_loss
+
+        self.log(loss_metrics)
+
         return total_loss
 
     def evaluate(
@@ -419,6 +442,9 @@ class CustomTrainer(Trainer):
             A dictionary containing the evaluation loss and the potential metrics computed from the predictions. The
             dictionary also contains the epoch number which comes from the training state.
         """
+
+        # NOTE: This code runs on all processes (i.e. multiple GPUs) in a distributed settings.
+
         # memory metrics - must set up as early as possible
         self._memory_tracker.start()
 
@@ -430,9 +456,9 @@ class CustomTrainer(Trainer):
         # Get 10_000 samples from the eval dataset
         eval_subset = self.eval_dataset.select(  # type: ignore
             range(
-                0,
+                self.args.process_index,  # local process rank
                 self.eval_dataset.num_rows,  # type: ignore
-                self.eval_dataset.num_rows // 10000,  # type: ignore
+                self.eval_dataset.num_rows // ((100 if self.dry_run else 10_000) // self.args.world_size),  # type: ignore
             )
         )
         logging.info("Evaluating perplexity...")
@@ -445,6 +471,8 @@ class CustomTrainer(Trainer):
         perplexities = []
         with torch.no_grad():
 
+            eval_subset = prepare_dataset_for_ppl_inference(self, eval_subset)
+
             inference_dataloader = DataLoader(
                 eval_subset,  # type: ignore
                 batch_size=32,
@@ -454,32 +482,80 @@ class CustomTrainer(Trainer):
             )
 
             for batch in tqdm(inference_dataloader):
-
                 batch_perplexity = compute_trainer_perplexity(
                     batch, self.tokenizer, self
                 )
 
                 perplexities.extend(batch_perplexity)
 
-        metrics["perplexity_mean"] = torch.mean(
+        tensor_perplexities = torch.tensor(
+            perplexities, device=self.args.device
+        )
+        perplexity_mean = torch.mean(tensor_perplexities)
+        perplexity_std = torch.std(tensor_perplexities)
+
+        if self.args.world_size > 1:
+            # setup barrier for all processes
+            dist.barrier()
+
+            # Reduce perplexity across all processes
+            gathered_perplexity_mean = [
+                torch.zeros_like(perplexity_mean)
+                for _ in range(self.args.world_size)
+            ]
+            gathered_perplexity_std = [
+                torch.zeros_like(perplexity_std)
+                for _ in range(self.args.world_size)
+            ]
+
+            dist.all_gather(gathered_perplexity_mean, perplexity_mean)
+            dist.all_gather(gathered_perplexity_std, perplexity_std)
+
+        # if main process
+        metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
             torch.tensor(perplexities)
         ).item()
-        metrics["perplexity_std"] = torch.std(
+        metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
             torch.tensor(perplexities)
         ).item()
 
-        # Additional behaviour - evaluate on BLIMP
-        logging.info("Evaluating on BLIMP...")
         self.save_model(self.args.output_dir, _internal_call=True)
+        dist.barrier()  # Ensure all processes have access to the same model
+
+        evaluator_metrics = {}
 
         inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
-        evaluator = BlimpEvaluator(inference_model_dir)
-        metrics = evaluator()
-        for key in list(metrics.keys()):
+        # Additional behaviour - evaluate on BLIMP
+        if self.eval_blimp:
+            logging.info("Evaluating on BLIMP...")
+            blimp_evaluator = BlimpEvaluator(
+                inference_model_dir,
+                device=self.args.device,
+                process_index=self.args.process_index,  # world (global) process index
+                world_size=self.args.world_size,
+                dry_run=self.dry_run,
+            )
+            evaluator_metrics.update(blimp_evaluator())  # type: ignore
+
+        if self.eval_glue:
+            logging.info("Evaluating on GLUE...")
+            glue_evaluator = GlueEvaluator(
+                inference_model_dir,
+                device=self.args.device,
+                process_index=self.args.process_index,  # world (global) process index
+                world_size=self.args.world_size,
+                dry_run=self.dry_run,
+            )
+            evaluator_metrics.update(glue_evaluator())  # type: ignore
+
+        for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
-                metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-        metrics.update(metrics)
+                evaluator_metrics[
+                    f"{metric_key_prefix}_{key}"
+                ] = evaluator_metrics.pop(key)
+
+        metrics.update(evaluator_metrics)
 
         if f"{metric_key_prefix}_jit_compilation_time" in metrics:
             start_time += metrics[f"{metric_key_prefix}_jit_compilation_time"]
@@ -512,9 +588,10 @@ class CustomTrainer(Trainer):
         lm_model = load_base_model(lm_config)
 
         # unwrapping the base model and the mlm task head and copying that over into the lm model
-
         lm_model.roberta_prelayernorm = unwrap_model(self.model)
-        lm_model.lm_head = self.objective_curriculum.units["mlm"].task_head
+        lm_model.lm_head = unwrap_model(
+            self.objective_curriculum.units["mlm"].task_head
+        )
 
         return lm_model
 
@@ -523,9 +600,10 @@ class CustomTrainer(Trainer):
         Override the Trainer._save() method to save the objective curriculum state as well,
         and to save the full language model (base model + mlm head).
         """
-        super()._save(output_dir=output_dir, state_dict=state_dict)
 
         if self.args.should_save:
+            super()._save(output_dir=output_dir, state_dict=state_dict)
+
             # Saving should be done only on the main process
 
             # NOTE: We need to save the objective curriculum state as well
@@ -538,21 +616,45 @@ class CustomTrainer(Trainer):
             os.makedirs(mlm_model_dir, exist_ok=True)
             os.makedirs(task_heads_dir, exist_ok=True)
 
-            # save the full language model
+            # save the full language model + the associated tokenizer (for inference)
             lm_model = self._initialize_full_lm_model()
             lm_model.save_pretrained(mlm_model_dir)
 
+            self.tokenizer.save_pretrained(mlm_model_dir)
+
             self.objective_curriculum.save(output_dir=task_heads_dir)
 
-    def _load_from_checkpoint(self, resume_from_checkpoint: str, model=None):
-        """
-        Loads in the base model as well as the task heads from the checkpoint. For each task head,
-        we also load in the optimizer state and the scheduler state (For the base model this
-        is handled by the Trainer class at a later point).
+    def _wrap_model(self, model, training=True, dataloader=None):
+        if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
+            kwargs = {}
+            if self.args.ddp_find_unused_parameters is not None:
+                kwargs[
+                    "find_unused_parameters"
+                ] = self.args.ddp_find_unused_parameters
+            elif isinstance(model, PreTrainedModel):
+                # find_unused_parameters breaks checkpointing as per
+                # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                kwargs[
+                    "find_unused_parameters"
+                ] = not model.is_gradient_checkpointing
+            else:
+                kwargs["find_unused_parameters"] = True
 
-        Args:
-            * resume_from_checkpoint (str): The path to the checkpoint to resume from.
-            * model (Optional[PreTrainedModel]): The model to load the checkpoint into. If None,
-        """
+            if self.args.ddp_bucket_cap_mb is not None:
+                kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+            if is_torch_neuroncore_available():
+                return model
+            if any(p.requires_grad for p in model.parameters()):
+                model = nn.parallel.DistributedDataParallel(
+                    model,
+                    device_ids=[self.args.local_rank]
+                    if self.args._n_gpu != 0
+                    else None,
+                    output_device=self.args.local_rank
+                    if self.args._n_gpu != 0
+                    else None,
+                    broadcast_buffers=False,  # NOTE: Important for DDP with obj. curriculum
+                    **kwargs,
+                )
 
-        super()._load_from_checkpoint(resume_from_checkpoint, model)
+        return model
