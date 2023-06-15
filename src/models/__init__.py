@@ -16,15 +16,23 @@ def load_base_model(cfg: BabyLMConfig) -> PreTrainedModel:
 
     model_kwargs = cfg.model.model_kwargs
 
-    # NOTE: The only required parameter is hidden_size, everything else should have default
-    # values defined that can be inferred (i.e. the vocab_size is inferred from the tokenizer)
+    # NOTE: The only required parameter is vocab_size and hidden_size
+    # These two values effectively represent the input -> output dimensions of the model
     assert (
-        "hidden_size" in model_kwargs
-    ), "hidden_size must be specified in model_kwargs"
+        "hidden_size" in model_kwargs and "vocab_size" in model_kwargs
+    ), "hidden_size and vocab_size must at a minimum be specified in model_kwargs"
 
     if cfg.model.name in MODEL_REGISTRY:
         config = CONFIG_REGISTRY[cfg.model.name](**model_kwargs)
-        model = MODEL_REGISTRY[cfg.model.name](config)
+
+        if config.name_or_path:
+            model = MODEL_REGISTRY[cfg.model.name].from_pretrained(
+                config.name_or_path, config=config
+            )
+            logger.info(f"Loaded model config from {config.name_or_path}")
+        else:
+            logger.info(f"Initialized model config from scratch")
+            model = MODEL_REGISTRY[cfg.model.name](config)
     else:
         raise ValueError(f"Model {cfg.model.name} not found in registry")
 
