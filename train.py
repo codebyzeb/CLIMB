@@ -86,19 +86,13 @@ def main(cfg: BabyLMConfig):
     assert isinstance(dataset, DatasetDict), "Dataset is not a DatasetDict"
 
     logger.info("Loading tokenizer")
-    tokenizer = load_tokenizer(cfg, dataset)
+    tokenizer = load_tokenizer(cfg)
 
-    # Load model
     logger.info("Initializing model")
     model = load_base_model(cfg)
 
-    logger.debug("Model parameters:")
-    for i, (name, param) in enumerate(model.named_parameters()):
-        logger.debug(f"{i}: {name}")
-
     # Preprocess data
     logger.info("Preprocessing data")
-
     data_preprocessor = DatasetPreprocessor(cfg, tokenizer)
 
     train_dataset = dataset["train"].map(
@@ -192,6 +186,8 @@ def main(cfg: BabyLMConfig):
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
     )
+
+    trainer.evaluate()  # Initial model evaluation
     trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
 
     # passing load_best_model_at_end=True to the trainer will load the best model at
