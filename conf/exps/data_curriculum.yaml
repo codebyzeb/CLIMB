@@ -1,9 +1,8 @@
 # @package _global_
-defaults:
+defaults: # to override config groups
   - override /objective_curriculum: base_mlm
+  - override /vocabulary_curriculum: null
 
-
-# 31 jobs
 # define sweep paramters  
 hydra:
   sweeper:
@@ -12,6 +11,7 @@ hydra:
       data_curriculum.pacing_fn_kwargs.start_percent: 0.1
       data_curriculum.pacing_fn_kwargs.starting_difficulty: 0.1
       data_curriculum.pacing_fn_kwargs.max_difficulty: 1.0
+      
       # only sweep spoken_first if difficulty scorer name is data_split
       data_curriculum:
         "{difficulty_scorer_name: None},\
@@ -19,7 +19,7 @@ hydra:
         difficulty_scorer_name: data_split, difficulty_scorer_kwargs: {spoken_first: True},\
         difficulty_scorer_name: data_split, difficulty_scorer_kwargs: {spoken_first: False}}"
       data_curriculum.pacing_fn_name: 
-        choice( None, "linear", "exp", "log")
+        choice("linear", "exp", "log")
       data_curriculum.pacing_fn_kwargs.end_percent: 
         choice(0.5, 0.65, 0.8, 0.95)
 

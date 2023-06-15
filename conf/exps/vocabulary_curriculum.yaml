@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - override /data_curriculum: null
+  - override /objective_curriculum: base_mlm
+
+# define sweep paramters  
+hydra:
+  sweeper:
+    params:
+      # constants
+      vocabulary_curriculum.pacing_fn_kwargs.start_percent: 0.1
+      vocabulary_curriculum.pacing_fn_kwargs.end_percent: 0.8
+      vocabulary_curriculum.pacing_fn_kwargs.starting_difficulty: 0.2
+      vocabulary_curriculum.pacing_fn_kwargs.max_difficulty: 1.0
+      
+      vocabulary_curriculum: 
+        choice(linear_token_ids, linear_pos_tags_and_token_ids)
+      vocabulary_curriculum.pacing_fn_name: 
+        choice(None, "linear","exp", "log")
+      

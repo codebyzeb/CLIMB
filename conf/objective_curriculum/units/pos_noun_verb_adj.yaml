@@ -1,0 +1,16 @@
+pos_noun_verb: 
+  task_head_params: {
+    "hidden_size": 256,
+  }
+
+  optimizer_params: { 
+    "lr": 1e-4,
+  }
+
+  scheduler_params: {}
+
+  optional_kwargs: { 
+    "pos_tags": ["NOUN", "VERB", "ADJ"],
+    "mask_probability_pos": 0.4,
+    "mask_probability_other": 0.15,
+  }

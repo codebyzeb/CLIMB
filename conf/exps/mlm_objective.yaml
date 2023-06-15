@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - override /data_curriculum: null
+  - override /vocabulary_curriculum: null
+  - override /objective_curriculum: base_mlm
+
+
+# define sweep paramters  
+hydra:
+  sweeper:
+    params:
+      objective_curriculum.steps.mlm:
+        choice([0,1.0], [0.1,1.0], [0.25,1.0])
+
+
+      
+
