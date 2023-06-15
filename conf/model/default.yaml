@@ -1,0 +1,10 @@
+name: 'roberta_pre_layer_norm'
+
+model_kwargs: {
+  "num_hidden_layer": 8,
+  "num_attention_heads": 8, 
+  "hidden_size": 256,
+  "intermediate_size": 1024,
+  "initializer_range": 0.02, 
+  "layer_norm_eps": 1e-5,   
+}

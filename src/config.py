@@ -36,7 +36,6 @@ class DatasetParams(DictConfig):
 class TokenizerParams(DictConfig):
     # data processing parameters
     name: str
-    vocab_size: int
 
     # additional optional kwargs
     add_prefix_space: Optional[bool] = None
@@ -55,12 +54,8 @@ class ModelParams(DictConfig):
     # model parameters
     name: str
 
-    num_hidden_layers: int
-    num_attention_heads: int
-    hidden_size: int
-    intermediate_size: int
-    initializer_range: float
-    layer_norm_eps: float
+    # NOTE: At least 'hidden_size' needs to be specified
+    model_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     resume_checkpoint_path: Optional[str] = None
 

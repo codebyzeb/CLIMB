@@ -2,8 +2,8 @@ defaults:
   - base_config
   - _self_
   - dataset: strict_small 
-  - tokenizer: tuned
-  - model: babyberta
+  - tokenizer: default
+  - model: default
   - objective_curriculum: base_mlm
   - data_curriculum: linear_data_split
   - vocabulary_curriculum: linear_pos_tags_and_token_ids
