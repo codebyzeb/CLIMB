@@ -150,18 +150,19 @@ class GlueEvaluator(object):
             + f" --train_file filter-data/glue_filtered/{task}.train.json"
             + f" --validation_file filter-data/glue_filtered/{task}.{valid_name}.json"
             + f" --do_train"
-            # + f" --do_eval" # Don't evaluate during training
+            + f" --do_eval"
             + f" --use_fast_tokenizer True"  # Set to True to use fast tokenizer
             + f" --max_seq_length 128"
             + f" --per_device_train_batch_size 64"
             + f" --learning_rate 5e-5"
-            + f" --num_train_epochs 2"  # Train for two epochs
+            + f" --num_train_epochs 10"
             + f" --evaluation_strategy steps"
             + f" --patience 10"
-            + f" --eval_every 3000"
-            + f" --eval_steps 2000"
+            + f" --eval_every 200"
+            + f" --eval_steps 200"
             + f" --overwrite_output_dir"
-            + f" --seed 32"
+            + f" --seed 12"
+            # + f" --logging_steps 1" NOTE: ENABLE THIS FOR DEBUGGING
         )
 
         # print all the key names of the envrioment variables
@@ -173,6 +174,7 @@ class GlueEvaluator(object):
                 del subprocess_env[key]
 
         # Disable W&B on subprocess
+        # NOTE: COMMENT OUT FOR DEBUGGING
         subprocess_env["WANDB_DISABLED"] = "true"
         subprocess_env["WANDB_MODE"] = "disabled"
 
@@ -210,7 +212,9 @@ class GlueEvaluator(object):
                 )
             ) as f:
                 data = json.load(f)
-                accuracies["glue_" + task + "_accuracy"] = data["eval_accuracy"]
+                accuracies["glue_" + task + "_accuracy"] = data[
+                    "eval_accuracy"
+                ]
                 if "eval_f1" in data:
                     accuracies["glue_" + task + "_f1"] = data["eval_f1"]
 
