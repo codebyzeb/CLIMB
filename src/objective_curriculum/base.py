@@ -21,6 +21,7 @@ class ObjectiveCurriculum:
         self,
         curriculum_cfg: ObjectiveCurriculumParams,
         max_steps: int,
+        hidden_rep_size: int,
         tokenizer: PreTrainedTokenizerFast,
         device: torch.device,
         local_rank: int,
@@ -33,6 +34,9 @@ class ObjectiveCurriculum:
         Args:
             * curriculum_cfg (ObjectiveCurriculumParams): The objective curriculum configuration
             * max_steps (int): The maximum number of steps in the training process
+            * hidden_rep_size (int): The size of the hidden representation of the model [this
+                is the size of the last hidden layer of the base model, which is the input to the
+                task head]
             * tokenizer (PreTrainedTokenizerFast): The tokenizer used for tokenizing the input,
                 used primarily for the objective collator.
             * device (torch.device): The device on which the model is trained.
@@ -45,6 +49,7 @@ class ObjectiveCurriculum:
 
         self._curriculum_cfg = curriculum_cfg
         self.max_steps = max_steps
+        self.hidden_rep_size = hidden_rep_size
 
         self.units = {}
 
@@ -71,6 +76,7 @@ class ObjectiveCurriculum:
                         - self._curriculum_cfg.steps[unit_name][0]
                     )
                 ),
+                hidden_rep_size=hidden_rep_size,
                 device=device,
                 local_rank=local_rank,
             )

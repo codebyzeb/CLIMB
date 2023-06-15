@@ -158,6 +158,7 @@ class POSTask(BaseTaskUnit):
         pos_head_config = RobertaConfig(
             vocab_size=len(self.pos_tags)
             + 1,  # + 1 to mark unknown or 'other' POS tag
+            hidden_size=self.hidden_rep_size,
             **self.task_unit_params["task_head_params"],
         )
 
