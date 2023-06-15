@@ -23,6 +23,7 @@ class BaseTaskUnit(metaclass=ABCMeta):
         task_unit_name: str,
         task_unit_params: Mapping[str, Any],
         task_num_steps: int,
+        hidden_rep_size: int,
         device: device,
         local_rank: int,
     ) -> None:
@@ -36,6 +37,9 @@ class BaseTaskUnit(metaclass=ABCMeta):
             * task_unit_params (Mapping[str, Any]): The parameters for the task unit taken from the
                 objective curriculum configuration.
             * task_num_steps (int): The total number of steps for which the task is active
+            * hidden_rep_size (int): The size of the hidden representation of the model [this
+                is the size of the last hidden layer of the base model, which is the input to the
+                task head]
         """
 
         self.tokenizer = tokenizer
@@ -45,6 +49,8 @@ class BaseTaskUnit(metaclass=ABCMeta):
         self.task_unit_params = task_unit_params
 
         self.task_num_steps = task_num_steps
+
+        self.hidden_rep_size = hidden_rep_size
 
         self.device = device
         self.local_rank = local_rank

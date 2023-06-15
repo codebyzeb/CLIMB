@@ -61,6 +61,7 @@ class MLMTask(BaseTaskUnit):
         # Setting mlm task head
         mlm_head_config = RobertaConfig(
             vocab_size=self.tokenizer.vocab_size,  # type: ignore
+            hidden_size=self.hidden_rep_size,
             **self.task_unit_params["task_head_params"],
         )
 

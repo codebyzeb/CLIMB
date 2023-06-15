@@ -1,7 +1,5 @@
 mlm: 
-  task_head_params: {
-    "hidden_size": 256,
-  }
+  task_head_params: {}
 
   optimizer_params: { 
     "lr": 1e-4,
