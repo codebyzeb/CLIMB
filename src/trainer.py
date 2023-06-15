@@ -130,10 +130,16 @@ class CustomTrainer(Trainer):
         self.data_curriculum_cfg = hydra_config.data_curriculum
         self.vocabulary_curriculum_cfg = hydra_config.vocabulary_curriculum
 
+        # NOTE: The hidden dimension of the base model (is the input dimension to the task head)
+        # We check that this variable is set in the config file when loading the base model
+
+        hidden_rep_size = hydra_config.model.model_kwargs["hidden_size"]
+
         self.objective_curriculum = ObjectiveCurriculum(
-            self.objective_curriculum_cfg,
-            args.max_steps,
-            tokenizer,
+            curriculum_cfg=self.objective_curriculum_cfg,
+            max_steps=args.max_steps,
+            hidden_rep_size=hidden_rep_size,
+            tokenizer=tokenizer,
             device=self.args.device,
             local_rank=self.args.local_rank,
         )
@@ -475,7 +481,7 @@ class CustomTrainer(Trainer):
 
             inference_dataloader = DataLoader(
                 eval_subset,  # type: ignore
-                batch_size=32,
+                batch_size=32,  # TODO: Depends on model size (roberta baseline runs out of mem)
                 shuffle=False,
                 collate_fn=base_collate_fn,
                 pin_memory=True,
@@ -520,7 +526,9 @@ class CustomTrainer(Trainer):
         ).item()
 
         self.save_model(self.args.output_dir, _internal_call=True)
-        dist.barrier()  # Ensure all processes have access to the same model
+        # if world size > 1, then we need to synchronize the model across all processes
+        if self.args.world_size > 1:
+            dist.barrier()  # Ensure all processes have access to the same model
 
         evaluator_metrics = {}
 
@@ -588,7 +596,11 @@ class CustomTrainer(Trainer):
         lm_model = load_base_model(lm_config)
 
         # unwrapping the base model and the mlm task head and copying that over into the lm model
-        lm_model.roberta_prelayernorm = unwrap_model(self.model)
+        setattr(
+            lm_model,
+            f"{lm_model.base_model_prefix}",
+            unwrap_model(self.model.base_model),
+        )
         lm_model.lm_head = unwrap_model(
             self.objective_curriculum.units["mlm"].task_head
         )
