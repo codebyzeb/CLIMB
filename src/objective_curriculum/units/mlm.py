@@ -122,6 +122,13 @@ class MLMTask(BaseTaskUnit):
         """
         return self._mlm_head
 
+    @task_head.setter
+    def task_head(self, new_head):
+        """
+        Sets the instance mlm head.
+        """
+        self._mlm_head = new_head
+
     @property
     def optimizer(self):
         """

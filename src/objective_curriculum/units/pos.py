@@ -227,6 +227,13 @@ class POSTask(BaseTaskUnit):
         """
         return self._pos_head
 
+    @task_head.setter
+    def task_head(self, new_head):
+        """
+        Sets the instance mlm head.
+        """
+        self._pos_head = new_head
+
     @property
     def optimizer(self):
         """

@@ -9,6 +9,7 @@ from torch import load as torch_load
 from torch import save as torch_save
 from torch.nn import Module
 from torch.nn.functional import cross_entropy
+from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
@@ -106,6 +107,14 @@ class BaseTaskUnit(metaclass=ABCMeta):
         """
         ...
 
+    @task_head.setter
+    @abstractmethod
+    def task_head(self, new_head: Module) -> None:
+        """
+        Sets the task head for the task unit;
+        """
+        ...
+
     def compute_loss(
         self,
         model: Module,
@@ -188,6 +197,13 @@ class BaseTaskUnit(metaclass=ABCMeta):
         )
 
         self.task_head.to(self.device)
+
+        if self.local_rank != -1:
+            self.task_head = DistributedDataParallel(
+                self.task_head,
+                device_ids=[self.local_rank],
+                output_device=self.local_rank,
+            )
 
         self.optimizer.load_state_dict(
             torch_load(
