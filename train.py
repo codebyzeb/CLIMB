@@ -174,6 +174,7 @@ def main(cfg: BabyLMConfig):
         load_best_model_at_end=True,
         metric_for_best_model="eval_perplexity_mean",
         ddp_find_unused_parameters=False,
+        ddp_timeout=7200,  # 2 hours (default is 30 minutes)
     )
 
     # Set up trainer
