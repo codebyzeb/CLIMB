@@ -189,7 +189,7 @@ def main(cfg: BabyLMConfig):
     )
 
     trainer.evaluate()  # Initial model evaluation
-    trainer.train(resume_from_checkpoint=cfg.model.resume_checkpoint_path)
+    trainer.train(resume_from_checkpoint=cfg.experiment.resume_checkpoint_path)
 
     # passing load_best_model_at_end=True to the trainer will load the best model at
     # the end of training, so we don't need to do it here

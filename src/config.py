@@ -23,6 +23,9 @@ class ExperimentParams(DictConfig):
     # whether to run the experiment only offline
     offline_run: bool = False
 
+    # Optional checkpoint path to resume training from
+    resume_checkpoint_path: Optional[str] = None
+
 
 @dataclass
 class DatasetParams(DictConfig):
@@ -56,8 +59,6 @@ class ModelParams(DictConfig):
 
     # NOTE: At least 'hidden_size' needs to be specified
     model_kwargs: Dict[str, Any] = field(default_factory=dict)
-
-    resume_checkpoint_path: Optional[str] = None
 
 
 @dataclass
