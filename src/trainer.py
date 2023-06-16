@@ -636,6 +636,20 @@ class CustomTrainer(Trainer):
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
 
+    def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
+        super()._load_from_checkpoint(resume_from_checkpoint, model=model)
+
+        task_head_dir = os.path.join(resume_from_checkpoint, "task_heads")
+        self.objective_curriculum.load(task_head_dir)
+
+    def _load_best_model(self):
+        super()._load_best_model()
+
+        task_head_dir = os.path.join(
+            self.state.best_model_checkpoint, "task_heads"
+        )
+        self.objective_curriculum.load(task_head_dir)
+
     def _wrap_model(self, model, training=True, dataloader=None):
         if self.args.parallel_mode == ParallelMode.DISTRIBUTED:
             kwargs = {}
