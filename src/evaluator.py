@@ -173,6 +173,9 @@ class GlueEvaluator(object):
             if key in TORCH_RUN_ENV_KEYS:
                 del subprocess_env[key]
 
+        if self.world_size > 1:
+            subprocess_env["CUDA_VISIBLE_DEVICES"] = str(self.process_index)
+
         # Disable W&B on subprocess
         # NOTE: COMMENT OUT FOR DEBUGGING
         subprocess_env["WANDB_DISABLED"] = "true"
