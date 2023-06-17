@@ -148,11 +148,11 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         evaluation_strategy="steps",
         eval_steps=cfg.trainer.max_training_steps
-        // (2 if cfg.experiment.dry_run else 10),  # eval every 10% of training
+        // (2 if cfg.experiment.dry_run else 4),  # eval every 25% of training
         save_steps=cfg.trainer.max_training_steps
         // (
-            2 if cfg.experiment.dry_run else 10
-        ),  # checkpoint every 10% of training
+            2 if cfg.experiment.dry_run else 4
+        ),  # checkpoint every 25% of training
         logging_steps=cfg.trainer.max_training_steps
         // 100,  # log every 1% of training
         run_name=cfg.experiment.name,
@@ -174,7 +174,7 @@ def main(cfg: BabyLMConfig):
         load_best_model_at_end=True,
         metric_for_best_model="eval_perplexity_mean",
         ddp_find_unused_parameters=False,
-        ddp_timeout=7200,  # 2 hours (default is 30 minutes)
+        ddp_timeout=28800,  # 8 hours (default is 30 minutes)
     )
 
     # Set up trainer

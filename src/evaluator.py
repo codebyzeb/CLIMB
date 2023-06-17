@@ -155,7 +155,7 @@ class GlueEvaluator(object):
             + f" --max_seq_length 128"
             + f" --per_device_train_batch_size 64"
             + f" --learning_rate 5e-5"
-            + f" --num_train_epochs 5"
+            + f" --num_train_epochs 2"
             + f" --evaluation_strategy steps"
             + f" --patience 10"
             + f" --eval_every 200"
