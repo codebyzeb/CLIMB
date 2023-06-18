@@ -77,15 +77,9 @@ class BlimpEvaluator(object):
             # Make sure all processes have finished before removing zeroshot directory
             dist.barrier()
 
-        # Delete the zeroshot directory
-        try:
+        # Delete the zeroshot directory; ensure that only one process does this
+        if self.process_index == 0:
             shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
-        except FileNotFoundError:
-            # Was deleted by another process
-            if self.world_size == 1:
-                raise FileNotFoundError(
-                    "The zeroshot directory was not found. This should not happen."
-                )
 
         return accuracies
 
@@ -174,7 +168,8 @@ class GlueEvaluator(object):
                 del subprocess_env[key]
 
         if self.world_size > 1:
-            subprocess_env["CUDA_VISIBLE_DEVICES"] = str(self.process_index)
+            # Set CUDA_VISIBLE_DEVICES to the local process index (assuming 4 GPUs per node)
+            subprocess_env["CUDA_VISIBLE_DEVICES"] = str(self.process_index % 4)
 
         # Disable W&B on subprocess
         # NOTE: COMMENT OUT FOR DEBUGGING
@@ -225,13 +220,7 @@ class GlueEvaluator(object):
             dist.barrier()
 
         # Delete the finetune directory
-        try:
+        if self.process_index == 0:
             shutil.rmtree(os.path.join(self.out_dir, "finetune"))
-        except FileNotFoundError:
-            # Was deleted by another process
-            if self.world_size == 1:
-                raise FileNotFoundError(
-                    "The finetune directory was not found. This should not happen."
-                )
 
         return accuracies
