@@ -79,7 +79,13 @@ class DataSplitSorter(BaseDifficultyScorer):
                 to 0.
         """
 
-        if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
+        if not hasattr(self, "_difficulty_scores"):
+
+            if global_stepnum != 0:
+                data_cl_logger.error(
+                    f"Global step num: {global_stepnum} > 0, but no difficulty scores have been computed yet. This should not happen."
+                )
+
             assert (
                 "filename" in dataset.column_names
             ), "Dataset must contain file names to use Data Split difficulty scorer"
