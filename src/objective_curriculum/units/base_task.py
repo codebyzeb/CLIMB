@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 # typing imports
 from transformers import PreTrainedTokenizerFast
+from transformers.modeling_utils import unwrap_model
 
 
 class BaseTaskUnit(metaclass=ABCMeta):
@@ -171,7 +172,7 @@ class BaseTaskUnit(metaclass=ABCMeta):
         """
 
         torch_save(
-            self.task_head.state_dict(),
+            unwrap_model(self.task_head).state_dict(),
             os.path.join(output_dir, f"{self.task_unit_name}_task_head.pt"),
         )
 
