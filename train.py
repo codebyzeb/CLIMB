@@ -173,6 +173,7 @@ def main(cfg: BabyLMConfig):
         remove_unused_columns=False,
         load_best_model_at_end=True,
         metric_for_best_model="eval_perplexity_mean",
+        greater_is_better=False,  # smaller perplexity is better
         ddp_find_unused_parameters=False,
         ddp_timeout=28800,  # 8 hours (default is 30 minutes)
     )

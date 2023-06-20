@@ -410,6 +410,15 @@ class CustomTrainer(Trainer):
 
         loss_metrics = {}
 
+        if self.state.global_step >= self.args.max_steps:
+            raise Exception(
+                """
+                Reached max_steps already - training should have stopped.
+                NOTE: You are probably using a resume_from_checkpoint flag with max_steps set to a
+                value smaller than the number of steps in the checkpoint.
+                """
+            )
+
         for unit_name, unit in self.objective_curriculum[
             self.state.global_step
         ].items():
