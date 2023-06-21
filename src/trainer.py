@@ -490,7 +490,7 @@ class CustomTrainer(Trainer):
 
             inference_dataloader = DataLoader(
                 eval_subset,  # type: ignore
-                batch_size=32,  # TODO: Depends on model size (roberta baseline runs out of mem)
+                batch_size=4 if self.tokenizer.vocab_size > 10_000 else 32, 
                 shuffle=False,
                 collate_fn=base_collate_fn,
                 pin_memory=True,
