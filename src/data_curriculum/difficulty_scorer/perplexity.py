@@ -284,7 +284,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
 
                     inference_dataloader = DataLoader(
                         dataset,  # type: ignore
-                        batch_size=32,
+                        batch_size=4 if self.tokenizer.vocab_size > 10_000 else 32,
                         shuffle=False,
                         collate_fn=base_collate_fn,
                         sampler=sampler,
