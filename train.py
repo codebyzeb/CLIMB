@@ -91,6 +91,10 @@ def main(cfg: BabyLMConfig):
     logger.info("Initializing model")
     model = load_base_model(cfg)
 
+    assert (
+        tokenizer.vocab_size == model.config.vocab_size
+    ), "Tokenizer and model vocab size mismatch"
+
     # Preprocess data
     logger.info("Preprocessing data")
     data_preprocessor = DatasetPreprocessor(cfg, tokenizer)
@@ -189,7 +193,8 @@ def main(cfg: BabyLMConfig):
         tokenizer=tokenizer,
     )
 
-    trainer.evaluate()  # Initial model evaluation
+    if not cfg.experiment.resume_checkpoint_path:
+        trainer.evaluate()  # Initial model evaluation
     trainer.train(resume_from_checkpoint=cfg.experiment.resume_checkpoint_path)
 
     # passing load_best_model_at_end=True to the trainer will load the best model at
