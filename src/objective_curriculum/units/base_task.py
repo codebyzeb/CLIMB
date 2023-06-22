@@ -9,7 +9,6 @@ from torch import load as torch_load
 from torch import save as torch_save
 from torch.nn import Module
 from torch.nn.functional import cross_entropy
-from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
@@ -185,26 +184,35 @@ class BaseTaskUnit(metaclass=ABCMeta):
             os.path.join(output_dir, f"{self.task_unit_name}_scheduler.pt"),
         )
 
+    def _possibly_wrap_state_dict(
+        self, state_dict: Dict[str, Tensor]
+    ) -> Dict[str, Tensor]:
+        """
+        Wraps the state dict in a DistributedDataParallel state dict if the task unit is
+        distributed.
+        """
+
+        if self.local_rank != -1:
+            state_dict = {
+                f"module.{key}": value for key, value in state_dict.items()
+            }
+
+        return state_dict
+
     def load(self, input_dir: str) -> None:
         """
         Loads the task unit from the given directory.
         """
-
         self.task_head.load_state_dict(
-            torch_load(
-                os.path.join(input_dir, f"{self.task_unit_name}_task_head.pt"),
-                map_location="cpu",
+            self._possibly_wrap_state_dict(
+                torch_load(
+                    os.path.join(
+                        input_dir, f"{self.task_unit_name}_task_head.pt"
+                    ),
+                    map_location=self.device,
+                )
             )
         )
-
-        self.task_head.to(self.device)
-
-        if self.local_rank != -1:
-            self.task_head = DistributedDataParallel(
-                self.task_head,
-                device_ids=[self.local_rank],
-                output_device=self.local_rank,
-            )
 
         self.optimizer.load_state_dict(
             torch_load(
