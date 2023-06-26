@@ -96,8 +96,8 @@ class DatasetPreprocessor(object):
         }
 
         for example in range(len(examples["text"])):
-            text = examples["text"][example]
-            tagged_text = examples["tagged_text"][example]
+            text = examples["text"][example].strip()
+            tagged_text = examples["tagged_text"][example].strip()
             filename = examples["filename"][example]
 
             tokenized_inputs = self.tokenizer(
