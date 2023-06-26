@@ -2,11 +2,7 @@ defaults:
   - base_config
   - _self_
   - dataset: strict_small 
-  - tokenizer: default
-  - model: default
   - objective_curriculum: base_mlm
-  - data_curriculum: linear_data_split
-  - vocabulary_curriculum: linear_pos_tags_and_token_ids
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'
@@ -24,4 +20,4 @@ trainer:
   num_warmup_steps: 20_000
   max_training_steps: 100_000
   eval_blimp: True
-  eval_glue: True
+  eval_glue: False
