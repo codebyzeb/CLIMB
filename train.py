@@ -129,6 +129,9 @@ def main(cfg: BabyLMConfig):
         # These environment variables get picked up by Trainer
         os.environ["WANDB_PROJECT"] = cfg.experiment.group
         os.environ["WANDB_ENTITY"] = "baby-lm"
+        wandb.config = OmegaConf.to_container(
+            cfg, resolve=True, throw_on_missing=True
+        )
         if cfg.experiment.resume_checkpoint_path:
             resume_run_id = cfg.experiment.resume_run_id
             if resume_run_id is None:
@@ -137,9 +140,13 @@ def main(cfg: BabyLMConfig):
                 )
             os.environ["WANDB_RUN_ID"] = resume_run_id
             os.environ["WANDB_RESUME"] = "allow"
-
-        wandb.config = OmegaConf.to_container(
-            cfg, resolve=True, throw_on_missing=True
+        wandb.init(
+            entity="baby-lm",
+            project=cfg.experiment.group,
+            name=cfg.experiment.name,
+            config=wandb.config,
+            id=cfg.experiment.resume_run_id,
+            resume="allow",
         )
 
     # Set up training arguments
