@@ -6,6 +6,7 @@ import os
 # config-related imports
 import hydra
 import torch
+import torch.distributed as dist
 
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
@@ -140,12 +141,12 @@ def main(cfg: BabyLMConfig):
                 )
             os.environ["WANDB_RUN_ID"] = resume_run_id
             os.environ["WANDB_RESUME"] = "allow"
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+        if dist.get_rank() == 0:
             wandb.init(
                 entity="baby-lm",
                 project=cfg.experiment.group,
                 name=cfg.experiment.name,
-                config=wandb.config,
+                config=wandb.config,  # type: ignore
                 id=cfg.experiment.resume_run_id,
                 resume="allow",
             )
