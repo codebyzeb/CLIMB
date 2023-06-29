@@ -95,6 +95,14 @@ class DatasetPreprocessor(object):
             "filename": [],
         }
 
+        full_tokenized_inputs = {
+            "input_ids": [],
+            "special_tokens_mask": [],
+            "attention_mask": [],
+            "pos_tags": [],
+            "filename": [],
+        }
+
         for example in range(len(examples["text"])):
             text = examples["text"][example]
             tagged_text = examples["tagged_text"][example]
@@ -102,8 +110,7 @@ class DatasetPreprocessor(object):
 
             tokenized_inputs = self.tokenizer(
                 text,
-                padding="max_length",
-                max_length=self.max_input_length,
+                padding=False,
                 truncation=False,
                 return_special_tokens_mask=True,
                 return_offsets_mapping=True,
@@ -136,26 +143,38 @@ class DatasetPreprocessor(object):
                     else POS_TAG_MAP["X"]
                 )
 
-            truncated_length = (len(tokenized_inputs["input_ids"]) // self.max_input_length) * self.max_input_length  # type: ignore
+            full_tokenized_inputs["input_ids"].extend(
+                tokenized_inputs["input_ids"]
+            )
+            full_tokenized_inputs["special_tokens_mask"].extend(
+                tokenized_inputs["special_tokens_mask"]
+            )
+            full_tokenized_inputs["attention_mask"].extend(
+                tokenized_inputs["attention_mask"]
+            )
+            full_tokenized_inputs["pos_tags"].extend(pos_tags)
+            full_tokenized_inputs["filename"].extend(
+                [filename] * len(tokenized_inputs["input_ids"])
+            )
 
-            for i in range(
-                0,
-                truncated_length,
-                self.max_input_length,
-            ):
-                batch["input_ids"].append(
-                    tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
-                )
-                batch["special_tokens_mask"].append(
-                    tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
-                )
-                batch["attention_mask"].append(
-                    tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
-                )
-                batch["pos_tags"].append(
-                    pos_tags[i : i + self.max_input_length]
-                )
-                batch["filename"].append(filename)
+        truncated_length = (
+            len(full_tokenized_inputs["input_ids"]) // self.max_input_length
+        ) * self.max_input_length
+
+        for i in range(0, truncated_length, self.max_input_length):
+            batch["input_ids"].append(
+                full_tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
+            )
+            batch["special_tokens_mask"].append(
+                full_tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
+            )
+            batch["attention_mask"].append(
+                full_tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
+            )
+            batch["pos_tags"].append(
+                full_tokenized_inputs["pos_tags"][i : i + self.max_input_length]  # type: ignore
+            )
+            batch["filename"].append(full_tokenized_inputs["filename"][i])
 
         if self.callback_functions:
             for callback_function in self.callback_functions:
