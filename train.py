@@ -168,10 +168,10 @@ def main(cfg: BabyLMConfig):
         seed=cfg.experiment.seed,
         evaluation_strategy="steps",
         eval_steps=cfg.trainer.max_training_steps
-        // (2 if cfg.experiment.dry_run else 4),  # eval every 25% of training
+        // (2 if cfg.experiment.dry_run else 8),  # eval every 25% of training
         save_steps=cfg.trainer.max_training_steps
         // (
-            2 if cfg.experiment.dry_run else 4
+            2 if cfg.experiment.dry_run else 8
         ),  # checkpoint every 25% of training
         logging_steps=cfg.trainer.max_training_steps
         // 100,  # log every 1% of training
