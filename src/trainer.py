@@ -555,7 +555,7 @@ class CustomTrainer(Trainer):
             )
             # Get average of blimp metrics
             blimp_metrics = blimp_evaluator()
-            blimp_metrics['blimp_avg'] = sum(blimp_metrics.values()) / len(blimp_metrics) # type: ignore
+            blimp_metrics["blimp_avg"] = sum(blimp_metrics.values()) / len(blimp_metrics)  # type: ignore
             evaluator_metrics.update(blimp_metrics)  # type: ignore
 
         if self.eval_glue:
@@ -569,7 +569,6 @@ class CustomTrainer(Trainer):
             )
             # Get average of glue metrics
             glue_metrics = glue_evaluator()
-            glue_metrics['glue_avg'] = sum(glue_metrics.values()) / len(glue_metrics) # type: ignore
             evaluator_metrics.update(glue_metrics)  # type: ignore
 
         for key in list(evaluator_metrics.keys()):
