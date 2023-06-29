@@ -141,7 +141,8 @@ def main(cfg: BabyLMConfig):
                 )
             os.environ["WANDB_RUN_ID"] = resume_run_id
             os.environ["WANDB_RESUME"] = "allow"
-        if dist.get_rank() == 0:
+
+        if not dist.is_initialized() or dist.get_rank() == 0:
             wandb.init(
                 entity="baby-lm",
                 project=cfg.experiment.group,
