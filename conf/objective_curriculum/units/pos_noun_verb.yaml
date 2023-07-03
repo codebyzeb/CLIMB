@@ -2,7 +2,7 @@ pos_noun_verb:
   task_head_params: {}
 
   optimizer_params: { 
-    "lr": 1e-4,
+    "lr": 1e-3,
   }
 
   scheduler_params: {}
