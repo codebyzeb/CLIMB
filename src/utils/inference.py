@@ -110,14 +110,16 @@ def compute_trainer_perplexity(
     # loss is a tensor (batch * seq_len, seq_len), where in the second dimension only at most one
     # token should be non-zero (the masked token). We sum over the second dimension to get the
     # loss for each token in each batch
-
     loss = loss.sum(dim=-1)
 
     # Now loss is a vector of (batch * seq_len) length, we reshape it to (batch, seq_len)
     loss = loss.view(batch_size, seq_len)
+    # we can now sum over the second dimension to get the loss for each sample
+    summed_loss = loss.sum(dim=-1)
 
-    # Now averaging over the seq_len dimension to get the average loss for each batch
-    mean_loss = loss.mean(dim=-1)
+    # Now we divide by the number of non-masked tokens in each batch to get avg loss
+    non_masked_tokens = torch.sum(special_tokens_mask == 0, dim=-1).squeeze()
+    mean_loss = summed_loss / non_masked_tokens
 
     # batch perplexity is a vector of length batch_size
     batch_perplexity = torch.exp(mean_loss)
