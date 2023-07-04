@@ -110,10 +110,15 @@ class DatasetPreprocessor(object):
             tagged_text = examples["tagged_text"][example]
             filename = examples["filename"][example]
 
-            # We do padding here for when we aren't joining sentences because the collator's padding doesn't work on the pos tags
             tokenized_inputs = self.tokenizer(
                 text,
-                padding=False,
+                pad_to_multiple_of=self.max_input_length
+                if not self.join_sentences
+                else None,
+                padding="longest" if not self.join_sentences else "do_not_pad",
+                max_length=self.max_input_length
+                if not self.join_sentences
+                else None,
                 truncation=False,
                 return_special_tokens_mask=True,
                 return_offsets_mapping=True,
@@ -186,7 +191,7 @@ class DatasetPreprocessor(object):
                         pos_tags[i : i + self.max_input_length]
                     )
                     batch["filename"].append(filename)
-                # Need to do extra padding for pos tags because the collator's padding doesn't work on them
+                # Need to do extra padding for pos tags because the tokenizer padding doesn't work on them
                 if len(batch["pos_tags"][-1]) < self.max_input_length:
                     batch["pos_tags"][-1].extend(
                         [POS_TAG_MAP["X"]]
@@ -194,12 +199,10 @@ class DatasetPreprocessor(object):
                     )
 
         if self.join_sentences:
+            # NOTE: We drop the last batch if it's not full. This is just to ensure every example is the same length which makes things easier.
             truncated_length = (
-                (
-                    (len(full_tokenized_inputs["input_ids"]) - 1)
-                    // self.max_input_length
-                )
-                + 1
+                len(full_tokenized_inputs["input_ids"])
+                // self.max_input_length
             ) * self.max_input_length
 
             for i in range(0, truncated_length, self.max_input_length):
@@ -216,11 +219,6 @@ class DatasetPreprocessor(object):
                     full_tokenized_inputs["pos_tags"][i : i + self.max_input_length]  # type: ignore
                 )
                 batch["filename"].append(full_tokenized_inputs["filename"][i])
-            if len(batch["pos_tags"][-1]) < self.max_input_length:
-                batch["pos_tags"][-1].extend(
-                    [POS_TAG_MAP["X"]]
-                    * (self.max_input_length - len(batch["pos_tags"][-1]))
-                )
 
         if self.callback_functions:
             for callback_function in self.callback_functions:
