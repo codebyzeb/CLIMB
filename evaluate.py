@@ -159,6 +159,8 @@ def main(cfg: BabyLMConfig):
         tokenizer=tokenizer,
     )
 
+    trainer._load_from_checkpoint(cfg.experiment.resume_checkpoint_path)
+
     metrics = trainer.evaluate(metric_key_prefix="eval")
 
     # Report metrics to wandb
