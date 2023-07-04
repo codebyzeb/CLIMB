@@ -69,6 +69,7 @@ class DatasetPreprocessor(object):
         # data processing params
         self.include_punctuation = cfg.data_preprocessing.include_punctuation
         self.max_input_length = cfg.data_preprocessing.max_input_length
+        self.join_sentences = cfg.data_preprocessing.join_sentences
         self.callback_functions = cfg.data_preprocessing.callback_functions
 
         self.tokenizer = tokenizer
@@ -108,6 +109,7 @@ class DatasetPreprocessor(object):
             tagged_text = examples["tagged_text"][example]
             filename = examples["filename"][example]
 
+            # We do padding here for when we aren't joining sentences because the collator's padding doesn't work on the pos tags
             tokenized_inputs = self.tokenizer(
                 text,
                 padding=False,
@@ -143,38 +145,75 @@ class DatasetPreprocessor(object):
                     else POS_TAG_MAP["X"]
                 )
 
-            full_tokenized_inputs["input_ids"].extend(
-                tokenized_inputs["input_ids"]
-            )
-            full_tokenized_inputs["special_tokens_mask"].extend(
-                tokenized_inputs["special_tokens_mask"]
-            )
-            full_tokenized_inputs["attention_mask"].extend(
-                tokenized_inputs["attention_mask"]
-            )
-            full_tokenized_inputs["pos_tags"].extend(pos_tags)
-            full_tokenized_inputs["filename"].extend(
-                [filename] * len(tokenized_inputs["input_ids"])
-            )
+            if self.join_sentences:
+                full_tokenized_inputs["input_ids"].extend(
+                    tokenized_inputs["input_ids"]
+                )
+                full_tokenized_inputs["special_tokens_mask"].extend(
+                    tokenized_inputs["special_tokens_mask"]
+                )
+                full_tokenized_inputs["attention_mask"].extend(
+                    tokenized_inputs["attention_mask"]
+                )
+                full_tokenized_inputs["pos_tags"].extend(pos_tags)
+                full_tokenized_inputs["filename"].extend(
+                    [filename] * len(tokenized_inputs["input_ids"])
+                )
+            else:
+                truncated_length = (((len(tokenized_inputs["input_ids"]) - 1) // self.max_input_length) + 1) * self.max_input_length  # type: ignore
+                for i in range(
+                    0,
+                    truncated_length,
+                    self.max_input_length,
+                ):
+                    batch["input_ids"].append(
+                        tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["special_tokens_mask"].append(
+                        tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["attention_mask"].append(
+                        tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
+                    )
+                    batch["pos_tags"].append(
+                        pos_tags[i : i + self.max_input_length]
+                    )
+                    batch["filename"].append(filename)
+                # Need to do extra padding for pos tags because the collator's padding doesn't work on them
+                if len(batch["pos_tags"][-1]) < self.max_input_length:
+                    batch["pos_tags"][-1].extend(
+                        [POS_TAG_MAP["X"]]
+                        * (self.max_input_length - len(batch["pos_tags"][-1]))
+                    )
 
-        truncated_length = (
-            len(full_tokenized_inputs["input_ids"]) // self.max_input_length
-        ) * self.max_input_length
+        if self.join_sentences:
+            truncated_length = (
+                (
+                    (len(full_tokenized_inputs["input_ids"]) - 1)
+                    // self.max_input_length
+                )
+                + 1
+            ) * self.max_input_length
 
-        for i in range(0, truncated_length, self.max_input_length):
-            batch["input_ids"].append(
-                full_tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
-            )
-            batch["special_tokens_mask"].append(
-                full_tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
-            )
-            batch["attention_mask"].append(
-                full_tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
-            )
-            batch["pos_tags"].append(
-                full_tokenized_inputs["pos_tags"][i : i + self.max_input_length]  # type: ignore
-            )
-            batch["filename"].append(full_tokenized_inputs["filename"][i])
+            for i in range(0, truncated_length, self.max_input_length):
+                batch["input_ids"].append(
+                    full_tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
+                )
+                batch["special_tokens_mask"].append(
+                    full_tokenized_inputs["special_tokens_mask"][i : i + self.max_input_length]  # type: ignore
+                )
+                batch["attention_mask"].append(
+                    full_tokenized_inputs["attention_mask"][i : i + self.max_input_length]  # type: ignore
+                )
+                batch["pos_tags"].append(
+                    full_tokenized_inputs["pos_tags"][i : i + self.max_input_length]  # type: ignore
+                )
+                batch["filename"].append(full_tokenized_inputs["filename"][i])
+            if len(batch["pos_tags"][-1]) < self.max_input_length:
+                batch["pos_tags"][-1].extend(
+                    [POS_TAG_MAP["X"]]
+                    * (self.max_input_length - len(batch["pos_tags"][-1]))
+                )
 
         if self.callback_functions:
             for callback_function in self.callback_functions:

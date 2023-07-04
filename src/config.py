@@ -52,6 +52,7 @@ class TokenizerParams(DictConfig):
 class DataPreprocessingParams(DictConfig):
     # params for preprocessing the dataset (i.e. tokenization)
     include_punctuation: bool
+    join_sentences: bool
     max_input_length: int
     callback_functions: Optional[List[str]] = None
 
