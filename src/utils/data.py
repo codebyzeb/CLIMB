@@ -172,12 +172,22 @@ class DatasetPreprocessor(object):
                     [filename] * len(tokenized_inputs["input_ids"])
                 )
             else:
-                truncated_length = (((len(tokenized_inputs["input_ids"]) - 1) // self.max_input_length) + 1) * self.max_input_length  # type: ignore
+                # Split into multiple examples if the input is too long
                 for i in range(
                     0,
-                    truncated_length,
+                    len(tokenized_inputs["input_ids"]),
                     self.max_input_length,
                 ):
+                    # Check if the final example would contain only special tokens and if so, don't include it
+                    if (
+                        sum(
+                            tokenized_inputs["special_tokens_mask"][
+                                i : i + self.max_input_length
+                            ]
+                        )
+                        == self.max_input_length
+                    ):
+                        break
                     batch["input_ids"].append(
                         tokenized_inputs["input_ids"][i : i + self.max_input_length]  # type: ignore
                     )

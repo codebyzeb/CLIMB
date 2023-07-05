@@ -119,6 +119,10 @@ def compute_trainer_perplexity(
 
     # Now we divide by the number of non-masked tokens in each batch to get avg loss
     non_masked_tokens = torch.sum(special_tokens_mask == 0, dim=-1).squeeze()
+
+    # Avoiding division by zero
+    non_masked_tokens[non_masked_tokens == 0] = 1
+
     mean_loss = summed_loss / non_masked_tokens
 
     # batch perplexity is a vector of length batch_size
