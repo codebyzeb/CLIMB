@@ -1,8 +1,8 @@
   difficulty_scorer_name: "self_perplexity"
   difficulty_scorer_kwargs: {"n_gram": 3,
-                              "update": 50000}
+                              "update": 100000}
   pacing_fn_name: "linear"
   pacing_fn_kwargs: {"start_percent": 0.1,
-                    "end_percent": 0.8,
-                    "starting_difficulty": 0.1,
+                    "end_percent": 0.5,
+                    "starting_difficulty": 0.25,
                     "max_difficulty": 1.0}
