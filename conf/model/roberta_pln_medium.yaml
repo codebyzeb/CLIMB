@@ -1,10 +1,10 @@
 name: 'roberta_pre_layer_norm'
 
 model_kwargs: {
-  "num_hidden_layers": 6,
-  "num_attention_heads": 8, 
-  "hidden_size": 256,
-  "intermediate_size": 1024,
+  "num_hidden_layers": 10,
+  "num_attention_heads": 10, 
+  "hidden_size": 500,
+  "intermediate_size": 2000,
   "layer_norm_eps": 1e-5,
   "eos_token_id": 4,
   "bos_token_id": 3,
