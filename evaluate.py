@@ -80,6 +80,7 @@ def main(cfg: BabyLMConfig):
         batched=True,
         num_proc=64,
         remove_columns=dataset["validation"].column_names,
+        load_from_cache_file=False,
     )
 
     # Setting up wandb
@@ -164,8 +165,12 @@ def main(cfg: BabyLMConfig):
     metrics = trainer.evaluate(metric_key_prefix="eval")
 
     # Report metrics to wandb
-    if not cfg.experiment.offline_run and int(os.environ.get("RANK", "0")) == 0:
+    if (
+        not cfg.experiment.offline_run
+        and int(os.environ.get("RANK", "0")) == 0
+    ):
         wandb.log({"manual": metrics})
+
 
 if __name__ == "__main__":
     main()
