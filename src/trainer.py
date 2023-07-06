@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -23,7 +23,12 @@ from tqdm import tqdm
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
-from transformers.trainer_utils import HubStrategy, has_length, speed_metrics
+from transformers.trainer_utils import (
+    HubStrategy,
+    IntervalStrategy,
+    has_length,
+    speed_metrics,
+)
 from transformers.training_args import ParallelMode, TrainingArguments
 from transformers.utils import (
     get_full_repo_name,
@@ -37,6 +42,7 @@ from src.utils.inference import (
     compute_trainer_perplexity,
     prepare_dataset_for_ppl_inference,
 )
+from wandb import Table
 
 # typing imports
 from .config import BabyLMConfig
@@ -100,6 +106,7 @@ class CustomTrainer(Trainer):
         dry_run: bool,
         args: TrainingArguments,
         tokenizer: PreTrainedTokenizerFast,
+        curriculum_learning_table: Union[Table, None] = None,
         **kwargs,
     ) -> None:
         """
@@ -114,6 +121,10 @@ class CustomTrainer(Trainer):
             * args (TrainingArguments): The training arguments, unpacked from the kwargs dict
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
+            * tokenizer (PreTrainedTokenizerFast): The tokenizer used for the current run.
+            * curriculum_learning_table (wandb.Table): The wandb table used to log the curriculum
+                learning progress -- i.e. the difficulty scores, the pacing function values, the
+                data that is being sampled.
         """
 
         self.hydra_config = hydra_config
@@ -157,6 +168,7 @@ class CustomTrainer(Trainer):
             )
 
         self.tokenizer = tokenizer
+        self.curriculum_learning_table = curriculum_learning_table
 
         self.add_callback(CurriculumLearningCallback())
         self.add_callback(TaskTrainerCallback(self.objective_curriculum))
@@ -334,6 +346,28 @@ class CustomTrainer(Trainer):
         )
         return ignore_columns
 
+    def log(self, logs: Dict[str, float]) -> None:
+        """
+        Log `logs` on the various objects watching training.
+
+        Subclass and override this method to inject custom behavior.
+
+        Args:
+            logs (`Dict[str, float]`):
+                The values to log.
+        """
+        if self.state.epoch is not None:
+            logs["epoch"] = round(self.state.epoch, 2)
+
+        output = {**logs, **{"step": self.state.global_step}}
+        if "curriculum_learning_table" not in logs:
+            # NOTE: Everything in state will be serialized to a json file when we save
+            # a checkpoint - alas a wandb.Table is not
+            self.state.log_history.append(output)
+        self.control = self.callback_handler.on_log(
+            self.args, self.state, self.control, logs
+        )
+
     def get_train_dataloader(self) -> DataLoader:
         """
         Returns the training :class:`~torch.utils.data.DataLoader`.
@@ -430,7 +464,94 @@ class CustomTrainer(Trainer):
 
             total_loss += unit_loss
 
-        self.log(loss_metrics)
+        if (
+            self.args.logging_strategy == IntervalStrategy.STEPS
+            and self.state.global_step % self.args.logging_steps == 0
+        ):
+
+            self.log(loss_metrics)
+
+            ### --- LOGGING OUT CURRICULUM LEARNING RELATED METRICS AND SAMPLES --- ###
+
+            if self.curriculum_learning_table is not None:
+
+                if len(self.curriculum_learning_table.data) > 0:
+                    # NOTE: this might be bug prone (rdm)
+                    max_table_step = int(
+                        self.curriculum_learning_table.data[-1][0]
+                    )
+
+                    if max_table_step >= self.state.global_step:
+                        # The table has already been logged for this step; just skip logging table
+                        return total_loss
+
+                ## Data Curriculum Learning Related ##
+
+                # decode the first 5 inputs
+                data_samples = ""
+                for i in range(5):
+                    data_samples += (
+                        f"{i+1}: "
+                        + self.tokenizer.decode(inputs["input_ids"][i])
+                        + "\n\n"
+                    )
+
+                if self.data_curriculum_cfg:
+                    data_difficulty_percentile = self.callback_handler.train_dataloader.sampler.pacing_fn(  # type: ignore
+                        self.state.global_step
+                    )
+                else:
+                    data_difficulty_percentile = 1.0
+
+                ## Objective Curriculum Learning Related ##
+
+                active_curricula_units = ", ".join(
+                    list(
+                        self.objective_curriculum[
+                            self.state.global_step
+                        ].keys()
+                    )
+                )
+
+                ## Vocabulary Curriculum Learning Related ##
+
+                if self.vocabulary_curriculum_cfg:
+                    vocab_unmasked_percentile = self.callback_handler.train_dataloader.vocabulary_map.pacing_fn(  # type: ignore
+                        self.state.global_step
+                    )
+
+                    vocab_masked_samples = ""
+                    for i in range(5):
+                        vocab_masked_samples += (
+                            f"{i+1}: "
+                            + self.tokenizer.decode(
+                                inputs["masked_input_ids"][i]
+                            )
+                            + "\n\n"
+                        )
+                else:
+                    vocab_unmasked_percentile = 1.0
+                    vocab_masked_samples = data_samples
+
+                self.curriculum_learning_table.add_data(
+                    self.state.global_step,
+                    data_difficulty_percentile,
+                    data_samples,
+                    active_curricula_units,
+                    vocab_unmasked_percentile,
+                    vocab_masked_samples,
+                )
+
+                _curriculum_learning_table = Table(
+                    columns=self.curriculum_learning_table.columns,
+                    data=self.curriculum_learning_table.data,
+                )
+
+                self.log(
+                    {
+                        "curriculum_learning_table": _curriculum_learning_table,  # type: ignore
+                    }
+                )
 
         return total_loss
 

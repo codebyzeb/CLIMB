@@ -13,6 +13,7 @@ from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
 from transformers import PreTrainedTokenizerFast
 
 from src.objective_curriculum import ObjectiveCurriculum, StackedCollator
+from src.utils.data import base_collate_fn
 from src.vocabulary_curriculum.vocabulary_map import BaseVocabularyMap
 
 logger = logging.getLogger(__name__)
@@ -125,22 +126,35 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
 
             # NOTE: Make sure we return POS from the collator and also that we aren't overridign the input_ids
 
+        def _collate_fn(*args, **kwargs):
+            """
+            Collate function that combines the custom collate function for each objective with
+            the base collate function. We do this to make sure we have the raw 'input_ids' which
+            have not been masked or otherwise processed.
+            """
+            batch = collate_fn(*args, **kwargs)
+            batch.update(base_collate_fn(*args, **kwargs))
+            return batch
+
         self._dataset_fetcher = _DatasetKind.create_fetcher(
             self._dataset_kind,
             self._dataset,
             self._auto_collation,
-            collate_fn,
+            _collate_fn,
             self._drop_last,
         )
 
         data: Dict[str, Tensor] = self._dataset_fetcher.fetch(
             index
         )  # may raise StopIteration
+
         if self._pin_memory:
             data = _torch_pin_memory(data, self._pin_memory_device)  # type: ignore[arg-type]
 
         # Restrict the vocabulary based on the curriculum step
         if self.loader.vocabulary_map is not None:
+
+            input_ids = data["input_ids"]
 
             for data_key in data.keys():
                 if data_key.startswith("labels") or data_key.startswith(
@@ -148,12 +162,15 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
                 ):
                     # Map the labels for each objective function to <unk> if they are not in
                     # the vocabulary
-
                     data[data_key] = self.loader.vocabulary_map.map_tokens(
                         data, data_key, self.loader.global_stepnum
                     )
 
+            data["masked_input_ids"] = data["input_ids"]
+            data["input_ids"] = input_ids
+
         # remove ignored columns
+
         if self.loader.ignore_columns is not None:
             for ignore_column in self.loader.ignore_columns:
                 data.pop(ignore_column, None)
