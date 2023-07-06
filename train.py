@@ -6,7 +6,6 @@ import os
 # config-related imports
 import hydra
 import torch
-import torch.distributed as dist
 
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
@@ -105,6 +104,7 @@ def main(cfg: BabyLMConfig):
         batched=True,
         num_proc=64,
         remove_columns=dataset["train"].column_names,
+        load_from_cache_file=False,
     )
 
     if cfg.experiment.dry_run:
@@ -120,6 +120,7 @@ def main(cfg: BabyLMConfig):
         batched=True,
         num_proc=64,
         remove_columns=dataset["validation"].column_names,
+        load_from_cache_file=False,
     )
 
     # Setting up wandb
@@ -142,7 +143,7 @@ def main(cfg: BabyLMConfig):
             os.environ["WANDB_RUN_ID"] = resume_run_id
             os.environ["WANDB_RESUME"] = "allow"
 
-         # Check if we're on process 0
+        # Check if we're on process 0
         if int(os.environ.get("RANK", "0")) == 0:
             wandb.init(
                 entity="baby-lm",
