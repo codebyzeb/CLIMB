@@ -170,6 +170,7 @@ checkpoint*
 
 # wandb
 wandb/
+artifacts/
 
 # we don't need all the images in misc 
 misc/default.png
