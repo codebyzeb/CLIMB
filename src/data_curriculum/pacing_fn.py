@@ -54,8 +54,10 @@ def get_pacing_fn(
             if step < step_start:
                 return starting_difficulty
 
+            step_diff = step - step_start
+
             return float(
-                min(rate * step + starting_difficulty, max_difficulty)
+                min(rate * step_diff + starting_difficulty, max_difficulty)
             )
 
         return _linear_function
@@ -67,8 +69,12 @@ def get_pacing_fn(
             if step < step_start:
                 return starting_difficulty
 
+            step_diff = step - step_start
+
             return float(
-                min(rate * step ** 2 + starting_difficulty, max_difficulty)
+                min(
+                    rate * step_diff ** 2 + starting_difficulty, max_difficulty
+                )
             )
 
         return _quad_function
@@ -80,8 +86,13 @@ def get_pacing_fn(
             if step < step_start:
                 return starting_difficulty
 
+            step_diff = step - step_start
+
             return float(
-                min(rate * step ** 0.5 + starting_difficulty, max_difficulty)
+                min(
+                    rate * step_diff ** 0.5 + starting_difficulty,
+                    max_difficulty,
+                )
             )
 
         return _root_function
@@ -109,9 +120,11 @@ def get_pacing_fn(
             if step < step_start:
                 return starting_difficulty
 
+            step_diff = step - step_start
+
             return float(
                 min(
-                    rate * (np.exp(step * constant) - 1) + tilde_b,
+                    rate * (np.exp(step_diff * constant) - 1) + tilde_b,
                     max_difficulty,
                 )
             )
@@ -131,8 +144,11 @@ def get_pacing_fn(
             if step < step_start:
                 return starting_difficulty
 
+            step_diff = step - step_start
+
             return min(
-                N_b * (1 + (1.0 / c) * np.log(step / tilde_a + ec)) + tilde_b,
+                N_b * (1 + (1.0 / c) * np.log(step_diff / tilde_a + ec))
+                + tilde_b,
                 max_difficulty,
             )
 
