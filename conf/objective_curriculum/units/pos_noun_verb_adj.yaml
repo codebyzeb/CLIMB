@@ -1,0 +1,14 @@
+pos_noun_verb_adj: 
+  task_head_params: {}
+
+  optimizer_params: { 
+    "lr": 1e-3,
+  }
+
+  scheduler_params: {}
+
+  optional_kwargs: { 
+    "pos_tags": ["NOUN", "VERB", "ADJ"],
+    "mask_probability_pos": 0.4,
+    "mask_probability_other": 0.15,
+  }
