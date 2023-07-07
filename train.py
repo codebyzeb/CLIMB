@@ -220,7 +220,7 @@ def main(cfg: BabyLMConfig):
         ),  # checkpoint every 25% of training
         logging_steps=cfg.trainer.max_training_steps
         // (
-            1 if cfg.experiment.dry_run else 1000
+            100 if cfg.experiment.dry_run else 1000
         ),  # log every 0.1% of training
         run_name=cfg.experiment.name,
         report_to=["wandb"]
