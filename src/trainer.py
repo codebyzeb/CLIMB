@@ -134,6 +134,7 @@ class CustomTrainer(Trainer):
         self.experiment_name = hydra_config.experiment.name
         self.eval_blimp = hydra_config.trainer.eval_blimp
         self.eval_glue = hydra_config.trainer.eval_glue
+        self.eval_perplexity = hydra_config.trainer.eval_perplexity
 
         super().__init__(args=args, **kwargs)
 
@@ -624,56 +625,59 @@ class CustomTrainer(Trainer):
 
         assert pad_idx is not None and mask_idx is not None
 
-        perplexities = []
-        with torch.no_grad():
+        if self.eval_perplexity:
+            perplexities = []
+            with torch.no_grad():
 
-            eval_subset = prepare_dataset_for_ppl_inference(self, eval_subset)
-
-            inference_dataloader = DataLoader(
-                eval_subset,  # type: ignore
-                batch_size=4,
-                shuffle=False,
-                collate_fn=base_collate_fn,
-                pin_memory=True,
-            )
-
-            for batch in tqdm(inference_dataloader):
-                batch_perplexity = compute_trainer_perplexity(
-                    batch, self.tokenizer, self
+                eval_subset = prepare_dataset_for_ppl_inference(
+                    self, eval_subset
                 )
 
-                perplexities.extend(batch_perplexity)
+                inference_dataloader = DataLoader(
+                    eval_subset,  # type: ignore
+                    batch_size=4,
+                    shuffle=False,
+                    collate_fn=base_collate_fn,
+                    pin_memory=True,
+                )
 
-        tensor_perplexities = torch.tensor(
-            perplexities, device=self.args.device
-        )
-        perplexity_mean = torch.mean(tensor_perplexities)
-        perplexity_std = torch.std(tensor_perplexities)
+                for batch in tqdm(inference_dataloader):
+                    batch_perplexity = compute_trainer_perplexity(
+                        batch, self.tokenizer, self
+                    )
 
-        if self.args.world_size > 1:
-            # setup barrier for all processes
-            dist.barrier()
+                    perplexities.extend(batch_perplexity)
 
-            # Reduce perplexity across all processes
-            gathered_perplexity_mean = [
-                torch.zeros_like(perplexity_mean)
-                for _ in range(self.args.world_size)
-            ]
-            gathered_perplexity_std = [
-                torch.zeros_like(perplexity_std)
-                for _ in range(self.args.world_size)
-            ]
+            tensor_perplexities = torch.tensor(
+                perplexities, device=self.args.device
+            )
+            perplexity_mean = torch.mean(tensor_perplexities)
+            perplexity_std = torch.std(tensor_perplexities)
 
-            dist.all_gather(gathered_perplexity_mean, perplexity_mean)
-            dist.all_gather(gathered_perplexity_std, perplexity_std)
+            if self.args.world_size > 1:
+                # setup barrier for all processes
+                dist.barrier()
 
-        # if main process
-        metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
-            torch.tensor(perplexities)
-        ).item()
-        metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
-            torch.tensor(perplexities)
-        ).item()
+                # Reduce perplexity across all processes
+                gathered_perplexity_mean = [
+                    torch.zeros_like(perplexity_mean)
+                    for _ in range(self.args.world_size)
+                ]
+                gathered_perplexity_std = [
+                    torch.zeros_like(perplexity_std)
+                    for _ in range(self.args.world_size)
+                ]
+
+                dist.all_gather(gathered_perplexity_mean, perplexity_mean)
+                dist.all_gather(gathered_perplexity_std, perplexity_std)
+
+            # if main process
+            metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
+                torch.tensor(perplexities)
+            ).item()
+            metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
+                torch.tensor(perplexities)
+            ).item()
 
         self.save_model(self.args.output_dir, _internal_call=True)
         # if world size > 1, then we need to synchronize the model across all processes
