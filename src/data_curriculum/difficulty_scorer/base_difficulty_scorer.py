@@ -8,8 +8,8 @@ from torch.utils.data import Dataset
 
 
 class BaseDifficultyScorer(metaclass=ABCMeta):
-    def __init__(self):
-        pass
+    def __init__(self, uniform_sampling: bool = False):
+        self.uniform_sampling = uniform_sampling
 
     def remove_scores_above_max_difficulty(
         self,
@@ -22,7 +22,11 @@ class BaseDifficultyScorer(metaclass=ABCMeta):
 
         # Set difficulty scores that are above the max difficulty percentile to 0
         _difficulty_scores = [
-            score if score <= max_difficulty else 0.0
+            0.0
+            if score > max_difficulty
+            else score
+            if not self.uniform_sampling
+            else 1.0
             for score in difficulty_scores
         ]
         return _difficulty_scores
