@@ -500,8 +500,21 @@ class CustomTrainer(Trainer):
                     data_difficulty_percentile = self.callback_handler.train_dataloader.sampler.pacing_fn(  # type: ignore
                         self.state.global_step
                     )
+                    difficulty_scores = torch.tensor(self.callback_handler.train_dataloader.sampler.difficulty_scorer._filtered_difficulty_scores)  # type: ignore
+                    difficulty_scores = difficulty_scores[
+                        difficulty_scores != 0
+                    ]  # Don't include the filtered-out scores
+                    num_samples = difficulty_scores.shape[0]
+                    max_difficulty_score = difficulty_scores.max().item()
+                    min_difficulty_score = difficulty_scores.min().item()
+                    median_difficulty_score = difficulty_scores.median().item()
+
                 else:
                     data_difficulty_percentile = 1.0
+                    num_samples = len(self.callback_handler.train_dataloader.sampler)  # type: ignore
+                    max_difficulty_score = 0.0
+                    min_difficulty_score = 0.0
+                    median_difficulty_score = 0.0
 
                 ## Objective Curriculum Learning Related ##
 
@@ -536,6 +549,10 @@ class CustomTrainer(Trainer):
                 self.curriculum_learning_table.add_data(
                     self.state.global_step,
                     data_difficulty_percentile,
+                    num_samples,
+                    max_difficulty_score,
+                    min_difficulty_score,
+                    median_difficulty_score,
                     data_samples,
                     active_curricula_units,
                     vocab_unmasked_percentile,
@@ -550,6 +567,7 @@ class CustomTrainer(Trainer):
                 self.log(
                     {
                         "curriculum_learning_table": _curriculum_learning_table,  # type: ignore
+                        "data_difficulty_percentile": data_difficulty_percentile,
                     }
                 )
 
