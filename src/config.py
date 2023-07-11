@@ -74,6 +74,7 @@ class TrainerParams(DictConfig):
     max_training_steps: int
     eval_blimp: bool
     eval_glue: bool
+    eval_perplexity: bool
 
 
 ### Curriculum learning parameter: can be either objective or data-driven ###
