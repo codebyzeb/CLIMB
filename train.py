@@ -183,6 +183,10 @@ def main(cfg: BabyLMConfig):
                     columns=[
                         "global_step",
                         "data_difficulty_percentile",
+                        "num_samples",
+                        "max_difficulty_score",
+                        "min_difficulty_score",
+                        "median_difficulty_score",
                         "data_samples",
                         "active_curricula_units",
                         "vocabulary_unmasked_percentile",
