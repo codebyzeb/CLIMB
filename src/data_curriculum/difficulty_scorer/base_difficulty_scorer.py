@@ -11,7 +11,7 @@ class BaseDifficultyScorer(metaclass=ABCMeta):
     def __init__(self):
         pass
 
-    def convert_difficulty_scores_to_percentiles(
+    def remove_scores_above_max_difficulty(
         self,
         difficulty_scores: Sequence[float],
         max_difficulty_percentile: float,

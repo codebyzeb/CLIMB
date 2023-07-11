@@ -90,7 +90,7 @@ class DataSplitSorter(BaseDifficultyScorer):
                 "filename" in dataset.column_names
             ), "Dataset must contain file names to use Data Split difficulty scorer"
 
-            difficulty_scores: Sequence[float] = []
+            self._difficulty_scores: Sequence[float] = []
 
             # indices is a list of indices that we want to score the difficulty of
             # (if we are using distributed training, not all indices will be scored - only thos e
@@ -104,17 +104,17 @@ class DataSplitSorter(BaseDifficultyScorer):
             for _idx, item in enumerate(dataset):
                 if _idx == indices[curr_indices_idx]:
                     difficulty = self.filename_map[item["filename"]]  # type: ignore
-                    difficulty_scores.append(difficulty)
+                    self._difficulty_scores.append(difficulty)
 
                     curr_indices_idx += 1
 
                     if curr_indices_idx == len(indices):
                         break
 
-            self._difficulty_scores = (
-                self.convert_difficulty_scores_to_percentiles(
-                    difficulty_scores, max_difficulty_percentile
-                )
+        self._filtered_difficulty_scores = (
+            self.remove_scores_above_max_difficulty(
+                self._difficulty_scores, max_difficulty_percentile
             )
+        )
 
-        return self._difficulty_scores
+        return self._filtered_difficulty_scores

@@ -169,7 +169,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
                 self, "tokenized_text"
             ), "n-gram model not trained"
 
-            difficulty_scores: Sequence[float] = []
+            self._difficulty_scores: Sequence[float] = []
 
             # NOTE: self._train_model(...) sets the self.tokenized_text attribute
             data_n_grams = (
@@ -187,7 +187,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             for _idx, n_gram in enumerate(data_n_grams):
                 if _idx == indices[curr_indices_idx]:
                     perplexity = self._compute_ngram_perplexity(n_gram)
-                    difficulty_scores.append(perplexity)
+                    self._difficulty_scores.append(perplexity)
 
                     curr_indices_idx += 1
 
@@ -196,12 +196,13 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             else:
                 raise RuntimeError("Not all indices were scored")
 
-            self._difficulty_scores = (
-                self.convert_difficulty_scores_to_percentiles(
-                    difficulty_scores, max_difficulty_percentile
-                )
+        self._filtered_difficulty_scores = (
+            self.remove_scores_above_max_difficulty(
+                self._difficulty_scores, max_difficulty_percentile
             )
-        return self._difficulty_scores
+        )
+
+        return self._filtered_difficulty_scores
 
 
 @register_difficulty_scorer("self_perplexity")
@@ -254,10 +255,11 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
             self.ngram_model.tokenizer = self.tokenizer
 
-            self._difficulty_scores = self.ngram_model.score_difficulty(
-                dataset, indices, global_stepnum, max_difficulty_percentile
+            self._filtered_difficulty_scores = (
+                self.ngram_model.score_difficulty(
+                    dataset, indices, global_stepnum, max_difficulty_percentile
+                )
             )
-            return self._difficulty_scores
         else:
             if global_stepnum % self.update == 0:
 
@@ -271,7 +273,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 data_cl_logger.info(
                     f"Recalculating sample weights using model at step {global_stepnum}"
                 )
-                difficulty_scores: Sequence[float] = []
+                self._difficulty_scores: Sequence[float] = []
 
                 with torch.no_grad():
                     data_cl_logger.info(
@@ -296,12 +298,12 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                             batch, self.tokenizer, self.trainer
                         )
 
-                        difficulty_scores.extend(batch_perplexity)
+                        self._difficulty_scores.extend(batch_perplexity)
 
-                    self._difficulty_scores = (
-                        self.convert_difficulty_scores_to_percentiles(
-                            difficulty_scores, max_difficulty_percentile
-                        )
-                    )
+            self._filtered_difficulty_scores = (
+                self.remove_scores_above_max_difficulty(
+                    self._difficulty_scores, max_difficulty_percentile
+                )
+            )
 
-        return self._difficulty_scores
+        return self._filtered_difficulty_scores
