@@ -219,17 +219,21 @@ class FinetuneEvaluator(object):
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
         logger.info("Running Finetuning evaluation script...")
 
-        if self.dry_run:
-            tasks = ["cola"]
-            logger.info("Running dry run. Only running on CoLA.")
-        else:
-            tasks = []
-            if self.run_glue:
+        tasks = []
+        if self.run_glue:
+            if self.dry_run:
+                tasks.extend(["cola"])
+                logger.info("Running dry run. Only running on CoLA from GLUE.")
+            else:
                 tasks.extend(self.GLUE_TASKS)
-                logger.info("Running on all GLUE tasks: " + ", ".join(tasks))
-            if self.run_msgs:
+                logger.info("Running on all GLUE tasks: " + ", ".join(self.GLUE_TASKS))
+        if self.run_msgs:
+            if self.dry_run:
+                tasks.extend(["main_verb_control"])
+                logger.info("Running dry run. Only running on main_verb_control from MSGS.")
+            else:
                 tasks.extend(self.MSGS_TASKS)
-                logger.info("Running on all MSGS tasks: " + ", ".join(tasks))
+                logger.info("Running on all MSGS tasks: " + ", ".join(self.MSGS_TASKS))
 
         for task_idx, task in enumerate(tasks):
             if task_idx % self.world_size != self.process_index:
