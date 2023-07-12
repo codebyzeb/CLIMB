@@ -266,21 +266,18 @@ def main(cfg: BabyLMConfig):
         trainer.evaluate()  # Initial model evaluation
     trainer.train(resume_from_checkpoint=cfg.experiment.resume_checkpoint_path)
 
-    # Always evaluate the best model on GLUE and MSGS at the end of training,
-    # even if we didn't evaluate it during training
-    if not cfg.trainer.eval_glue and not cfg.trainer.eval_msgs:
-        trainer.eval_glue = True
-        trainer.eval_msgs = True
-        trainer.eval_blimp = False
-        trainer.eval_perplexity = False
-        trainer.evaluate()
-
-    # passing load_best_model_at_end=True to the trainer will load the best model at
+    # Always evaluate the best model at the end of training, on every metric.
+    # Note that passing load_best_model_at_end=True to the trainer will load the best model at
     # the end of training, so we don't need to do it here
+    trainer.eval_glue = True
+    trainer.eval_msgs = True
+    trainer.eval_blimp = True
+    trainer.eval_perplexity = True
+    trainer.evaluate(metric_key_prefix='eval_best') # Note that this will also save the best model in the main output directory
+
     trainer.save_model(
         output_dir=os.path.join(training_args.output_dir, "best_model")
     )
-
 
 if __name__ == "__main__":
     main()
