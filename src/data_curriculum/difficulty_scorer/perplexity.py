@@ -64,6 +64,8 @@ class NGramPerplexityScorer(PerplexityBaseClass):
                 the n-gram model will be trained on half the dataset.
         """
 
+        super().__init__(**kwargs)
+
         data_cl_logger.info("Initializing n-gram perplexity scorer")
 
         self.n_gram = n_gram
@@ -207,7 +209,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
 
 @register_difficulty_scorer("self_perplexity")
 class SelfPerplexityScorer(PerplexityBaseClass):
-    def __init__(self, n_gram: int, update: int):
+    def __init__(self, n_gram: int, update: int, **kwargs):
         """
         Initializes the n-gram perplexity scorer.
 
@@ -215,6 +217,8 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             * n_gram (int): The n-gram to use for the initial n-gram model
             * update (int): The number of steps to wait before updating the n-gram model
         """
+
+        super().__init__(**kwargs)
 
         data_cl_logger.info(
             "Initializing active learning perplexity difficulty scorer"
