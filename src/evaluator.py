@@ -84,7 +84,7 @@ class BlimpEvaluator(object):
         return accuracies
 
 
-class GlueEvaluator(object):
+class FinetuneEvaluator(object):
 
     GLUE_TASKS = [
         "cola",
@@ -100,6 +100,20 @@ class GlueEvaluator(object):
         "wsc",
     ]
 
+    MSGS_TASKS = [
+        "main_verb_control",
+        "control_raising_control",
+        "syntactic_category_control",
+        "lexical_content_the_control",
+        "relative_position_control",
+        "main_verb_lexical_content_the",
+        "main_verb_relative_token_position",
+        "syntactic_category_lexical_content_the",
+        "syntactic_category_relative_position",
+        "control_raising_lexical_content_the",
+        "control_raising_relative_token_position",
+    ]
+
     def __init__(
         self,
         out_dir: str,
@@ -107,23 +121,33 @@ class GlueEvaluator(object):
         process_index: int,
         world_size: int,
         dry_run: bool = False,
+        run_glue: bool = True,
+        run_msgs: bool = False,
     ):
         """
         Args:
             * out_dir (str): Path to the output directory
+            * device (torch.device): Device to run the evaluation on
+            * process_index (int): Index of the current process
+            * world_size (int): Number of processes
+            * dry_run (bool): If True, don't actually run the evaluation script
+            * run_glue (bool): If True, finetune on all GLUE tasks
+            * run_msgs (bool): If True, finetune on all MSGS tasks
         """
 
+        if not run_glue and not run_msgs:
+            raise ValueError("run_glue and run_msgs cannot both be False. Must run at least one of GLUE or MSGS tasks")
+        
         self.out_dir = out_dir
         self.device = device
         self.process_index = process_index
         self.world_size = world_size
         self.dry_run = dry_run
+        self.run_glue = run_glue
+        self.run_msgs = run_msgs
 
     def run_script(self, task: str):
 
-        os.makedirs(
-            os.path.join(self.out_dir, "finetune", task), exist_ok=True
-        )
         logger.info(f"Running finetuning script for {task}...")
 
         if task == "mnli":
@@ -137,14 +161,21 @@ class GlueEvaluator(object):
             valid_name = "validation"
             out_dir = task
 
+        os.makedirs(
+            os.path.join(self.out_dir, "finetune", out_dir), exist_ok=True
+        )
+
+        task_group = "glue" if task in self.GLUE_TASKS else "msgs"
+
         cmd = (
             "cd lib/evaluation-pipeline; ../../env/bin/python finetune_classification.py"
             + f" --model_name_or_path ../../{self.out_dir}"
             + f" --output_dir ../../{self.out_dir}/finetune/{out_dir}"
-            + f" --train_file filter-data/glue_filtered/{task}.train.json"
-            + f" --validation_file filter-data/glue_filtered/{task}.{valid_name}.json"
+            + f" --train_file filter-data/{task_group}_filtered/{task}.train.json"
+            + f" --validation_file filter-data/{task_group}_filtered/{task}.{valid_name}.json"
             + f" --do_train"
             + f" --do_eval"
+            + f" --do_predict"
             + f" --use_fast_tokenizer True"  # Set to True to use fast tokenizer
             + f" --max_seq_length 128"
             + f" --per_device_train_batch_size 64"
@@ -186,11 +217,21 @@ class GlueEvaluator(object):
         """
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
-        logger.info("Running GLUE evaluation script...")
+        logger.info("Running Finetuning evaluation script...")
 
-        glue_tasks = self.GLUE_TASKS[:1] if self.dry_run else self.GLUE_TASKS
+        if self.dry_run:
+            tasks = ["cola"]
+            logger.info("Running dry run. Only running on CoLA.")
+        else:
+            tasks = []
+            if self.run_glue:
+                tasks.extend(self.GLUE_TASKS)
+                logger.info("Running on all GLUE tasks: " + ", ".join(tasks))
+            if self.run_msgs:
+                tasks.extend(self.MSGS_TASKS)
+                logger.info("Running on all MSGS tasks: " + ", ".join(tasks))
 
-        for task_idx, task in enumerate(glue_tasks):
+        for task_idx, task in enumerate(tasks):
             if task_idx % self.world_size != self.process_index:
                 continue
             self.run_script(task)
@@ -200,7 +241,7 @@ class GlueEvaluator(object):
 
         # Iterate through all directories in out_dir/zeroshot
         # and get the accuracies from the eval_results.json files
-        logger.info("GLUE Evaluation script finished. Getting accuracies...")
+        logger.info("Finetuning Evaluation script finished. Getting accuracies...")
         accuracies = {}
 
         for task in os.listdir(os.path.join(self.out_dir, "finetune")):
@@ -210,11 +251,12 @@ class GlueEvaluator(object):
                 )
             ) as f:
                 data = json.load(f)
-                accuracies["glue_" + task + "_accuracy"] = data[
+                task_group = "glue" if task in self.GLUE_TASKS else "msgs"
+                accuracies[f"{task_group}_" + task + "_accuracy"] = data[
                     "eval_accuracy"
                 ]
                 if "eval_f1" in data:
-                    accuracies["glue_" + task + "_f1"] = data["eval_f1"]
+                    accuracies[f"{task_group}" + task + "_f1"] = data["eval_f1"]
 
         if self.world_size > 1:
             dist.barrier()

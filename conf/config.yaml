@@ -22,4 +22,5 @@ trainer:
   max_training_steps: 250_000
   eval_blimp: True
   eval_glue: False
+  eval_msgs: False
   eval_perplexity: True

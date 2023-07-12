@@ -266,10 +266,11 @@ def main(cfg: BabyLMConfig):
         trainer.evaluate()  # Initial model evaluation
     trainer.train(resume_from_checkpoint=cfg.experiment.resume_checkpoint_path)
 
-    # Always evaluate the best model on GLUE at the end of training,
+    # Always evaluate the best model on GLUE and MSGS at the end of training,
     # even if we didn't evaluate it during training
-    if not cfg.trainer.eval_glue:
+    if not cfg.trainer.eval_glue and not cfg.trainer.eval_msgs:
         trainer.eval_glue = True
+        trainer.eval_msgs = True
         trainer.eval_blimp = False
         trainer.eval_perplexity = False
         trainer.evaluate()
