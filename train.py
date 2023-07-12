@@ -161,7 +161,7 @@ def main(cfg: BabyLMConfig):
             if cfg.experiment.resume_run_id:
                 try:
                     curriculum_learning_table = wandb.run.use_artifact(
-                        f"baby-lm/{cfg.experiment.group}/sdfsrun-{cfg.experiment.resume_run_id}-traincurriculum_learning_table:latest",
+                        f"baby-lm/{cfg.experiment.group}/run-{cfg.experiment.resume_run_id}-traincurriculum_learning_table:latest",
                     ).get("train/curriculum_learning_table")
                 except WandbCommError:
                     logger.warning(
@@ -278,11 +278,14 @@ def main(cfg: BabyLMConfig):
     trainer.eval_msgs = True
     trainer.eval_blimp = True
     trainer.eval_perplexity = True
-    trainer.evaluate(metric_key_prefix='eval_best') # Note that this will also save the best model in the main output directory
+    trainer.evaluate(
+        metric_key_prefix="eval_best"
+    )  # Note that this will also save the best model in the main output directory
 
     trainer.save_model(
         output_dir=os.path.join(training_args.output_dir, "best_model")
     )
+
 
 if __name__ == "__main__":
     main()
