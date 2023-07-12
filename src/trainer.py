@@ -23,6 +23,7 @@ from tqdm import tqdm
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.trainer_utils import (
     HubStrategy,
     IntervalStrategy,
@@ -76,6 +77,16 @@ class CurriculumLearningCallback(TrainerCallback):
     """
     A TrainerCallback that updates the data sampler and data collator with the current global step of training.
     """
+
+    def on_train_begin(
+        self,
+        args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        train_dataloader,
+        **kwargs,
+    ):
+        train_dataloader.global_stepnum = state.global_step
 
     def on_step_end(self, *_, train_dataloader, **kwargs) -> None:
         if isinstance(
