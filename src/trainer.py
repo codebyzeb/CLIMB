@@ -59,7 +59,7 @@ from .data_curriculum.pacing_fn import get_pacing_fn
 from .dataloader import CurriculumDataLoader
 
 # Model Evaluation
-from .evaluator import BlimpEvaluator, GlueEvaluator
+from .evaluator import BlimpEvaluator, FinetuneEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -134,6 +134,7 @@ class CustomTrainer(Trainer):
         self.experiment_name = hydra_config.experiment.name
         self.eval_blimp = hydra_config.trainer.eval_blimp
         self.eval_glue = hydra_config.trainer.eval_glue
+        self.eval_msgs = hydra_config.trainer.eval_msgs
         self.eval_perplexity = hydra_config.trainer.eval_perplexity
 
         super().__init__(args=args, **kwargs)
@@ -703,18 +704,20 @@ class CustomTrainer(Trainer):
             blimp_metrics["blimp_avg"] = sum(blimp_metrics.values()) / len(blimp_metrics)  # type: ignore
             evaluator_metrics.update(blimp_metrics)  # type: ignore
 
-        if self.eval_glue:
-            logging.info("Evaluating on GLUE...")
-            glue_evaluator = GlueEvaluator(
+        if self.eval_glue or self.eval_msgs:
+            logging.info("Evaluating on finetuning tasks...")
+            glue_evaluator = FinetuneEvaluator(
                 inference_model_dir,
                 device=self.args.device,
                 process_index=self.args.process_index,  # world (global) process index
                 world_size=self.args.world_size,
                 dry_run=self.dry_run,
+                run_glue=self.eval_glue,
+                run_msgs=self.eval_msgs,
             )
             # Get average of glue metrics
-            glue_metrics = glue_evaluator()
-            evaluator_metrics.update(glue_metrics)  # type: ignore
+            finetune_metrics = glue_evaluator()
+            evaluator_metrics.update(finetune_metrics)  # type: ignore
 
         for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
