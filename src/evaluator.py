@@ -256,7 +256,7 @@ class FinetuneEvaluator(object):
                     "eval_accuracy"
                 ]
                 if "eval_f1" in data:
-                    accuracies[f"{task_group}" + task + "_f1"] = data["eval_f1"]
+                    accuracies[f"{task_group}_" + task + "_f1"] = data["eval_f1"]
 
         if self.world_size > 1:
             dist.barrier()

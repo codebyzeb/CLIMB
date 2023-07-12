@@ -736,6 +736,10 @@ class CustomTrainer(Trainer):
             )
         )
 
+        # Log step of best model if running final evaluation
+        if 'best' in metric_key_prefix:
+            metrics[f'{metric_key_prefix}_model_step'] = int(self.state.best_model_checkpoint.split('checkpoint-')[-1])
+        
         self.log(metrics)
 
         self.control = self.callback_handler.on_evaluate(
