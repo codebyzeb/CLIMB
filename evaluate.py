@@ -11,10 +11,12 @@ from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from transformers.training_args import TrainingArguments
+from transformers.trainer_callback import TrainerState
 
 # wandb for logging metrics
 import wandb
 from src.config import BabyLMConfig
+from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
@@ -39,9 +41,6 @@ def main(cfg: BabyLMConfig):
     if missing_keys:
         raise RuntimeError(f"Missing keys in config: \n {missing_keys}")
 
-    assert (cfg.experiment.resume_checkpoint_path is not None) or (
-        cfg.experiment.resume_checkpoint_path == ""
-    ), "Resume checkpoint path must be set for evaluation"
     assert (cfg.experiment.offline_run) or (
         cfg.experiment.resume_run_id is not None
     ), "Resume run ID must be set for evalutation if not running offline"
@@ -83,6 +82,12 @@ def main(cfg: BabyLMConfig):
         load_from_cache_file=False,
     )
 
+    if cfg.experiment.resume_checkpoint_path is None:
+        cfg.experiment.resume_checkpoint_path = f"checkpoints/{cfg.experiment.group}/{cfg.experiment.name}/checkpoint-{cfg.trainer.max_training_steps}"
+        logging.info(f"No checkpoint path provided. Using latest checkpoint from run at: {cfg.experiment.resume_checkpoint_path}")
+    else:
+        logging.info(f"Using checkpoint path provided: {cfg.experiment.resume_checkpoint_path}")
+
     # Setting up wandb
     if cfg.experiment.offline_run:
         os.environ["WANDB_DISABLED"] = "true"
@@ -94,14 +99,13 @@ def main(cfg: BabyLMConfig):
         wandb.config = OmegaConf.to_container(
             cfg, resolve=True, throw_on_missing=True
         )
-        if cfg.experiment.resume_checkpoint_path:
-            resume_run_id = cfg.experiment.resume_run_id
-            if resume_run_id is None:
-                raise RuntimeError(
-                    "resume_run_id must be set if resume_checkpoint_path is set"
-                )
-            os.environ["WANDB_RUN_ID"] = resume_run_id
-            os.environ["WANDB_RESUME"] = "allow"
+        resume_run_id = cfg.experiment.resume_run_id
+        if resume_run_id is None:
+            raise RuntimeError(
+                "resume_run_id must be set if experiment.offline_run is False"
+            )
+        os.environ["WANDB_RUN_ID"] = resume_run_id
+        os.environ["WANDB_RESUME"] = "allow"
 
         # Check if we're on process 0
         if int(os.environ.get("RANK", "0")) == 0:
@@ -134,7 +138,9 @@ def main(cfg: BabyLMConfig):
         evaluation_strategy="no",
         logging_steps=1,
         run_name=cfg.experiment.name,
-        report_to=None,  # wandb deactivated, we report manually
+        report_to=["wandb"]
+        if not cfg.experiment.offline_run
+        else None,  # wandb deactivated for offline runs
         save_strategy="no",
         hub_token=os.environ["HF_WRITE_TOKEN"]
         if not cfg.experiment.offline_run
@@ -160,17 +166,19 @@ def main(cfg: BabyLMConfig):
         tokenizer=tokenizer,
     )
 
+    # First load from checkpoint, presumably the last checkpoint,
+    # and then load the best model from that checkpoint
     trainer._load_from_checkpoint(cfg.experiment.resume_checkpoint_path)
+    trainer.state = TrainerState.load_from_json(os.path.join(cfg.experiment.resume_checkpoint_path, "trainer_state.json"))
+    trainer._load_best_model()
 
-    metrics = trainer.evaluate(metric_key_prefix="eval")
-
-    # Report metrics to wandb
-    if (
-        not cfg.experiment.offline_run
-        and int(os.environ.get("RANK", "0")) == 0
-    ):
-        wandb.log({"manual": metrics})
-
+    logger.info('Loaded best model. Overriding config to evaluate on all tasks.')
+    trainer.eval_glue = True
+    trainer.eval_blimp = True
+    trainer.eval_msgs = True
+    trainer.eval_perplexity = True
+    trainer.evaluate(metric_key_prefix="eval_best") # Note that this will save the best model into the main output dir
+    collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
 
 if __name__ == "__main__":
     main()
