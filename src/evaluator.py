@@ -24,19 +24,24 @@ class BlimpEvaluator(object):
         process_index: int,
         world_size: int,
         dry_run: bool = False,
+        keep_predictions: bool = False,
     ):
         """
         Args:
             * out_dir (str): Path to the output directory
+            * device (torch.device): Device to run the evaluation on
+            * process_index (int): Index of the current process
+            * world_size (int): Number of processes
+            * dry_run (bool): If True, don't actually run the evaluation script
+            * keep_predictions (bool): If True, keep the predictions from BLIMP
         """
 
         self.out_dir = out_dir
-
         self.device = device
         self.process_index = process_index
         self.world_size = world_size
-
         self.dry_run = dry_run
+        self.keep_predictions = keep_predictions
 
     def __call__(self) -> Union[Dict[str, Any], None]:
         """
@@ -78,7 +83,7 @@ class BlimpEvaluator(object):
             dist.barrier()
 
         # Delete the zeroshot directory; ensure that only one process does this
-        if self.process_index == 0:
+        if self.process_index == 0 and not self.keep_predictions:
             shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
 
         return accuracies
@@ -123,6 +128,7 @@ class FinetuneEvaluator(object):
         dry_run: bool = False,
         run_glue: bool = True,
         run_msgs: bool = False,
+        keep_predictions: bool = False,
     ):
         """
         Args:
@@ -133,6 +139,7 @@ class FinetuneEvaluator(object):
             * dry_run (bool): If True, don't actually run the evaluation script
             * run_glue (bool): If True, finetune on all GLUE tasks
             * run_msgs (bool): If True, finetune on all MSGS tasks
+            * keep_predictions (bool): If True, keep the predictions from the finetuning
         """
 
         if not run_glue and not run_msgs:
@@ -145,6 +152,7 @@ class FinetuneEvaluator(object):
         self.dry_run = dry_run
         self.run_glue = run_glue
         self.run_msgs = run_msgs
+        self.keep_predictions = keep_predictions
 
     def run_script(self, task: str):
 
@@ -266,7 +274,21 @@ class FinetuneEvaluator(object):
             dist.barrier()
 
         # Delete the finetune directory
-        if self.process_index == 0:
+        if self.process_index == 0 and not self.keep_predictions:
             shutil.rmtree(os.path.join(self.out_dir, "finetune"))
 
         return accuracies
+
+def collect_results(out_dir: str):
+    """ Attempts to run the the collect_results.py script from the evaluation pipeline """
+
+    cmd = (
+            "cd lib/evaluation-pipeline; ../../env/bin/python collect_results.py"
+            + f" --model_path ../../{out_dir}"
+        )
+
+    output = subprocess.run(cmd, shell=True, capture_output=True, env=os.environ.copy())
+    if output.returncode != 0:
+        logger.warning("Failed to run collect_results.py script. Skipping...")
+    return
+ 

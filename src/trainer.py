@@ -619,6 +619,8 @@ class CustomTrainer(Trainer):
 
         start_time = time.time()
 
+        is_best_run = 'best' in metric_key_prefix
+
         metrics = {}
 
         # Additional behavior - evaluate perplexity
@@ -709,6 +711,7 @@ class CustomTrainer(Trainer):
                 process_index=self.args.process_index,  # world (global) process index
                 world_size=self.args.world_size,
                 dry_run=self.dry_run,
+                keep_predictions=is_best_run,
             )
             # Get average of blimp metrics
             blimp_metrics = blimp_evaluator()
@@ -717,7 +720,7 @@ class CustomTrainer(Trainer):
 
         if self.eval_glue or self.eval_msgs:
             logging.info("Evaluating on finetuning tasks...")
-            glue_evaluator = FinetuneEvaluator(
+            finetune_evaluator = FinetuneEvaluator(
                 inference_model_dir,
                 device=self.args.device,
                 process_index=self.args.process_index,  # world (global) process index
@@ -725,9 +728,10 @@ class CustomTrainer(Trainer):
                 dry_run=self.dry_run,
                 run_glue=self.eval_glue,
                 run_msgs=self.eval_msgs,
+                keep_predictions=is_best_run,
             )
             # Get average of glue metrics
-            finetune_metrics = glue_evaluator()
+            finetune_metrics = finetune_evaluator()
             evaluator_metrics.update(finetune_metrics)  # type: ignore
 
         for key in list(evaluator_metrics.keys()):
@@ -748,7 +752,7 @@ class CustomTrainer(Trainer):
         )
 
         # Log step of best model if running final evaluation
-        if 'best' in metric_key_prefix:
+        if is_best_run:
             metrics[f'{metric_key_prefix}_model_step'] = int(self.state.best_model_checkpoint.split('checkpoint-')[-1])
         
         self.log(metrics)

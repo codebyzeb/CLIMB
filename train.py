@@ -17,6 +17,7 @@ from wandb.errors import CommError as WandbCommError
 # wandb for logging metrics
 import wandb
 from src.config import BabyLMConfig
+from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
