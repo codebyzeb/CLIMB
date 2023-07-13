@@ -115,8 +115,10 @@ class DataSplitSorter(BaseDifficultyScorer):
             self, "_difficulty_scores"
         ), "Difficulty scores have not been computed but about to filter them."
 
-        _filtered_difficulty_scores = self.remove_scores_above_max_difficulty(
-            self._difficulty_scores, max_difficulty_percentile
+        self.filtered_difficulty_scores = (
+            self.remove_scores_above_max_difficulty(
+                self._difficulty_scores, max_difficulty_percentile
+            )
         )
 
-        return _filtered_difficulty_scores
+        return self.filtered_difficulty_scores

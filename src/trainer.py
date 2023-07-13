@@ -513,7 +513,7 @@ class CustomTrainer(Trainer):
                     data_difficulty_percentile = self.callback_handler.train_dataloader.sampler.pacing_fn(  # type: ignore
                         self.state.global_step
                     )
-                    difficulty_scores = torch.tensor(self.callback_handler.train_dataloader.sampler.difficulty_scorer._filtered_difficulty_scores)  # type: ignore
+                    difficulty_scores = torch.tensor(self.callback_handler.train_dataloader.sampler.difficulty_scorer.filtered_difficulty_scores)  # type: ignore
                     difficulty_scores = difficulty_scores[
                         difficulty_scores != 0
                     ]  # Don't include the filtered-out scores
@@ -619,7 +619,7 @@ class CustomTrainer(Trainer):
 
         start_time = time.time()
 
-        is_best_run = 'best' in metric_key_prefix
+        is_best_run = "best" in metric_key_prefix
 
         metrics = {}
 
@@ -753,8 +753,10 @@ class CustomTrainer(Trainer):
 
         # Log step of best model if running final evaluation
         if is_best_run:
-            metrics[f'{metric_key_prefix}_model_step'] = int(self.state.best_model_checkpoint.split('checkpoint-')[-1])
-        
+            metrics[f"{metric_key_prefix}_model_step"] = int(
+                self.state.best_model_checkpoint.split("checkpoint-")[-1]
+            )
+
         self.log(metrics)
 
         self.control = self.callback_handler.on_evaluate(
