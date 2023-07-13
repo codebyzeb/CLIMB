@@ -73,13 +73,13 @@ class DataSplitSorter(BaseDifficultyScorer):
             * global_stepnum (int): The global step number of the training loop
             * max_difficulty_percentile (float): The maximum difficulty percentile to use
         Returns:
-            * difficulty_scores: A list of difficulty scores that correspond to the difficulty of
-                each sample in the passed in dataset (in the same order as the dataset).
+            * filtered_difficulty_scores: A list of difficulty scores that correspond to the
+                difficulty of each sample in the passed in dataset (in the same order as the dataset).
                 The difficulty scores that are above the max_difficulty_percentile should be set
                 to 0.
         """
 
-        if not hasattr(self, "_difficulty_scores"):
+        if global_stepnum == 0:
 
             if global_stepnum != 0:
                 data_cl_logger.error(
@@ -111,10 +111,12 @@ class DataSplitSorter(BaseDifficultyScorer):
                     if curr_indices_idx == len(indices):
                         break
 
-        self._filtered_difficulty_scores = (
-            self.remove_scores_above_max_difficulty(
-                self._difficulty_scores, max_difficulty_percentile
-            )
+        assert hasattr(
+            self, "_difficulty_scores"
+        ), "Difficulty scores have not been computed but about to filter them."
+
+        _filtered_difficulty_scores = self.remove_scores_above_max_difficulty(
+            self._difficulty_scores, max_difficulty_percentile
         )
 
-        return self._filtered_difficulty_scores
+        return _filtered_difficulty_scores
