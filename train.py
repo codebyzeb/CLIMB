@@ -282,6 +282,7 @@ def main(cfg: BabyLMConfig):
     trainer.evaluate(
         metric_key_prefix="eval_best"
     )  # Note that this will also save the best model in the main output directory
+    collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
 
     trainer.save_model(
         output_dir=os.path.join(training_args.output_dir, "best_model")
