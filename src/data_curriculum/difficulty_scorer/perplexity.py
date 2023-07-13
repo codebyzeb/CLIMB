@@ -141,7 +141,7 @@ class NGramPerplexityScorer(PerplexityBaseClass):
         max_difficulty_percentile: float,
     ) -> Sequence[float]:
         """
-        Scores the difficulty of the dataset, and returns a list of scores.
+        Scores the difficulty of the dataset, and returns a list of filtered difficulty scores.
 
         Args:
             * dataset (Dataset): The dataset to score
@@ -152,18 +152,13 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             * global_stepnum (int): The global step number of the training loop
             * max_difficulty_percentile (float): The maximum difficulty percentile to use
         Returns:
-            * difficulty_scores: A list of difficulty scores that correspond to the difficulty of
-                each sample in the passed in dataset (in the same order as the dataset).
+            * filtered_difficulty_scores: A list of difficulty scores that correspond to the
+                difficulty of each sample in the passed in dataset (in the same order as the dataset).
                 The difficulty scores that are above the max_difficulty_percentile should be set
                 to 0.
         """
 
-        if not hasattr(self, "_difficulty_scores"):
-
-            if global_stepnum != 0:
-                data_cl_logger.error(
-                    f"Global step num: {global_stepnum} > 0, but no difficulty scores have been computed yet. This should not happen."
-                )
+        if global_stepnum == 0:
 
             self._train_model(dataset)
 
@@ -198,13 +193,15 @@ class NGramPerplexityScorer(PerplexityBaseClass):
             else:
                 raise RuntimeError("Not all indices were scored")
 
-        self._filtered_difficulty_scores = (
-            self.remove_scores_above_max_difficulty(
-                self._difficulty_scores, max_difficulty_percentile
-            )
+        assert hasattr(
+            self, "_difficulty_scores"
+        ), "Difficulty scores have not been computed but about to filter them."
+
+        _filtered_difficulty_scores = self.remove_scores_above_max_difficulty(
+            self._difficulty_scores, max_difficulty_percentile
         )
 
-        return self._filtered_difficulty_scores
+        return _filtered_difficulty_scores
 
 
 @register_difficulty_scorer("self_perplexity")
@@ -214,7 +211,8 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         Initializes the n-gram perplexity scorer.
 
         Args:
-            * n_gram (int): The n-gram to use for the initial n-gram model
+            * n_gram (int): The n-gram to use for the initial n-gram model; setting to 0 to
+                randomly sample from the dataset
             * update (int): The number of steps to wait before updating the n-gram model
         """
 
@@ -224,7 +222,11 @@ class SelfPerplexityScorer(PerplexityBaseClass):
             "Initializing active learning perplexity difficulty scorer"
         )
 
-        self.ngram_model = NGramPerplexityScorer(n_gram)
+        if n_gram <= 0:
+            self.ngram_model = None
+        else:
+            self.ngram_model = NGramPerplexityScorer(n_gram)
+
         self.update = update
         self._trainer = None
         self._tokenizer = None
@@ -253,17 +255,47 @@ class SelfPerplexityScorer(PerplexityBaseClass):
         global_stepnum: int,
         max_difficulty_percentile: float,
     ) -> Sequence[float]:
+        """
+        Scores the difficulty of the dataset, and returns a list of filtered difficulty scores.
+
+        Args:
+            * dataset (Dataset): The dataset to score
+            * indices (Sequence[int]): The indices of the dataset to score
+                (in the same order as the dataset). This is used for distributed training, where
+                the dataset is split across multiple processes, and each process only has a subset
+                of the dataset.
+            * global_stepnum (int): The global step number of the training loop
+            * max_difficulty_percentile (float): The maximum difficulty percentile to use
+        Returns:
+            * filtered_difficulty_scores: A list of difficulty scores that correspond to the
+                difficulty of each sample in the passed in dataset (in the same order as the dataset).
+                The difficulty scores that are above the max_difficulty_percentile should be set
+                to 0.
+        """
+
         assert self.tokenizer is not None and self.trainer is not None
 
         # if this is the initial step, use the ngram model class's method
-        if global_stepnum == 0 or not hasattr(self, "_difficulty_scores"):
-            self.ngram_model.tokenizer = self.tokenizer
+        if global_stepnum == 0:
 
-            self._filtered_difficulty_scores = (
-                self.ngram_model.score_difficulty(
+            if self.ngram_model is None:
+                data_cl_logger.info(
+                    "No NGram Model specified; sampling uniformly on global step 0"
+                )
+                self._difficulty_scores = [1.0 for _ in range(len(dataset))]
+            else:
+
+                self.ngram_model.tokenizer = self.tokenizer
+
+                # NOTE: the n_gram model will return a list of perplexity scores that have already
+                # been filtered by the max_difficulty_percentile; however, it will contain
+                # the _difficulty_scores attribute
+                _ = self.ngram_model.score_difficulty(
                     dataset, indices, global_stepnum, max_difficulty_percentile
                 )
-            )
+
+                self._difficulty_scores = self.ngram_model._difficulty_scores
+
         else:
             if global_stepnum % self.update == 0:
 
@@ -304,10 +336,12 @@ class SelfPerplexityScorer(PerplexityBaseClass):
 
                         self._difficulty_scores.extend(batch_perplexity)
 
-            self._filtered_difficulty_scores = (
-                self.remove_scores_above_max_difficulty(
-                    self._difficulty_scores, max_difficulty_percentile
-                )
-            )
+        assert hasattr(
+            self, "_difficulty_scores"
+        ), "Difficulty scores have not been computed but about to filter them."
 
-        return self._filtered_difficulty_scores
+        _filtered_difficulty_scores = self.remove_scores_above_max_difficulty(
+            self._difficulty_scores, max_difficulty_percentile
+        )
+
+        return _filtered_difficulty_scores

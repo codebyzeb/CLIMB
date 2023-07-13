@@ -51,9 +51,10 @@ class BaseDifficultyScorer(metaclass=ABCMeta):
             * global_stepnum (int): The global step number of the training loop
             * max_difficulty_percentile (float): The maximum difficulty percentile to use
         Returns:
-            * difficulty_scores: A list of difficulty scores that correspond to the difficulty of
-                each sample in the passed in dataset (in the same order as the dataset).
+            * filtered_difficulty_scores: A list of difficulty scores that correspond to the
+                difficulty of each sample in the passed in dataset (in the same order as the dataset).
                 The difficulty scores that are above the max_difficulty_percentile should be set
                 to 0.
+
         """
         raise NotImplementedError
