@@ -24,7 +24,7 @@ class BaseDifficultyScorer(metaclass=ABCMeta):
         _difficulty_scores = [
             0.0
             if score > max_difficulty
-            else score
+            else float(score)
             if not self.uniform_sampling
             else 1.0
             for score in difficulty_scores
