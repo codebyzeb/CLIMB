@@ -517,7 +517,9 @@ class CustomTrainer(Trainer):
                     difficulty_scores = difficulty_scores[
                         difficulty_scores != 0
                     ]  # Don't include the filtered-out scores
-                    num_samples = difficulty_scores.shape[0]
+                    num_samples = (
+                        difficulty_scores.shape[0] * self.args.world_size
+                    )
                     data_sampled_percentile = num_samples / self.train_dataset.num_rows  # type: ignore
                     max_difficulty_score = difficulty_scores.max().item()
                     min_difficulty_score = difficulty_scores.min().item()
@@ -526,7 +528,7 @@ class CustomTrainer(Trainer):
                 else:
                     data_difficulty_percentile = 1.0
                     data_sampled_percentile = 1.0
-                    num_samples = len(self.callback_handler.train_dataloader.sampler)  # type: ignore
+                    num_samples = len(self.callback_handler.train_dataloader.sampler) * self.args.world_size  # type: ignore
                     max_difficulty_score = 0.0
                     min_difficulty_score = 0.0
                     median_difficulty_score = 0.0
