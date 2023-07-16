@@ -7,6 +7,7 @@ defaults:
   - objective_curriculum: base_mlm
   - data_curriculum: linear_data_split
   - vocabulary_curriculum: linear_pos_tags_and_token_ids
+  - override hydra/launcher: submitit_slurm
 
 dataset: 
   name: 'CamBabyTrainers/BabyLM'
@@ -25,3 +26,13 @@ trainer:
   max_training_steps: 10_000
   eval_blimp: True
   eval_glue: True
+
+  # here we specify SBATCH parameters
+hydra:
+  launcher:
+    account: COMPUTERLAB-SL3-GPU
+    partition: ampere
+    name: ${hydra.job.name}
+    nodes: 1
+    tasks_per_node: 1
+    gres: gpu:4
