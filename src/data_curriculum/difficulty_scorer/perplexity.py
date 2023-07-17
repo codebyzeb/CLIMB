@@ -284,7 +284,7 @@ class SelfPerplexityScorer(PerplexityBaseClass):
                 data_cl_logger.info(
                     "No NGram Model specified; sampling uniformly on global step 0"
                 )
-                self._difficulty_scores = [1.0 for _ in range(len(dataset))]
+                self._difficulty_scores = [1.0 for _ in indices]
             else:
 
                 self.ngram_model.tokenizer = self.tokenizer
