@@ -576,17 +576,23 @@ class CustomTrainer(Trainer):
                     vocab_unmasked_percentile,
                     vocab_masked_samples,
                 )
+                # if divisible by evaluation interval, log the table
+                if (
+                    self.args.evaluation_strategy == IntervalStrategy.STEPS
+                    and self.state.global_step
+                    % self.args.eval_steps  # type: ignore
+                    == 0
+                ):
+                    _curriculum_learning_table = Table(
+                        columns=self.curriculum_learning_table.columns,
+                        data=self.curriculum_learning_table.data,
+                    )
 
-                _curriculum_learning_table = Table(
-                    columns=self.curriculum_learning_table.columns,
-                    data=self.curriculum_learning_table.data,
-                )
-
-                self.log(
-                    {
-                        "curriculum_learning_table": _curriculum_learning_table,  # type: ignore
-                    }
-                )
+                    self.log(
+                        {
+                            "curriculum_learning_table": _curriculum_learning_table,  # type: ignore
+                        }
+                    )
 
         return total_loss
 
