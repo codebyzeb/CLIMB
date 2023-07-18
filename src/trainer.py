@@ -13,6 +13,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from huggingface_hub.hf_api import create_repo
 from huggingface_hub.repository import Repository
+from huggingface_hub.utils._errors import HfHubHTTPError
 from omegaconf import OmegaConf
 
 # Data loading
@@ -206,13 +207,26 @@ class CustomTrainer(Trainer):
                 repo_name, token=self.args.hub_token
             )
 
-        # Make sure the repo exists.
-        create_repo(
-            repo_name,
-            token=self.args.hub_token,
-            private=self.args.hub_private_repo,
-            exist_ok=True,
-        )
+        # NOTE Fix huggingface_hub.utils._errors.HfHubHTTPError: 500 Server Error known issue
+        _repo_sleep_time = 1
+        _repo_created = False
+        while not _repo_created:
+            try:
+                # Make sure the repo exists.
+                create_repo(
+                    repo_name,
+                    token=self.args.hub_token,
+                    private=self.args.hub_private_repo,
+                    exist_ok=True,
+                )
+                _repo_created = True
+            except HfHubHTTPError:
+                if _repo_sleep_time > 64:
+                    raise RuntimeError(
+                        f"Could not create huggingface repo {repo_name} after {64} seconds."
+                    )
+                time.sleep(_repo_sleep_time)
+                _repo_sleep_time *= 2
 
         assert self.args.hub_token is not None
 
