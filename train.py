@@ -108,7 +108,6 @@ def main(cfg: BabyLMConfig):
         batched=True,
         num_proc=64,
         remove_columns=dataset["train"].column_names,
-        load_from_cache_file=False,
     )
 
     if cfg.experiment.dry_run:
@@ -124,7 +123,6 @@ def main(cfg: BabyLMConfig):
         batched=True,
         num_proc=64,
         remove_columns=dataset["validation"].column_names,
-        load_from_cache_file=False,
     )
 
     # Setting up wandb
