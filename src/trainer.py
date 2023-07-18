@@ -726,7 +726,7 @@ class CustomTrainer(Trainer):
 
         # Additional behaviour - evaluate on BLIMP
         if self.eval_blimp:
-            logging.info("Evaluating on BLIMP...")
+            logging.info("Evaluating on BLIMP and AOA...")
             blimp_evaluator = BlimpEvaluator(
                 inference_model_dir,
                 device=self.args.device,
