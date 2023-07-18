@@ -51,7 +51,7 @@ class BlimpEvaluator(object):
         """
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
-        logger.info("Running BLIMP evaluation script...")
+        logger.info("Running BLIMP and AOA evaluation script...")
         cmd = (
             "cd lib/evaluation-pipeline; ../../env/bin/python babylm_eval.py ../../"
             + self.out_dir
@@ -60,6 +60,7 @@ class BlimpEvaluator(object):
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
             + (" --dry_run True" if self.dry_run else "")
+            + " --run_aoa"
         )
         subprocess.run(cmd, shell=True)
 
@@ -68,7 +69,7 @@ class BlimpEvaluator(object):
 
         # Iterate through all directories in out_dir/zeroshot
         # and get the accuracies from the eval_results.json files
-        logger.info("BLIMP Evaluation script finished. Getting accuracies...")
+        logger.info("BLIMP and AOA Evaluation script finished. Getting accuracies...")
         accuracies = {}
         for task in os.listdir(os.path.join(self.out_dir, "zeroshot")):
             with open(
@@ -78,6 +79,16 @@ class BlimpEvaluator(object):
             ) as f:
                 accuracies["blimp_" + task] = json.load(f)["eval_accuracy"]
 
+        with open(
+            os.path.join(
+                self.out_dir, "aoa_prediction", "extracted_average_surprisals.json"
+            )
+        ) as f:
+            mean_absolute_deviations = json.load(f)
+            for key in mean_absolute_deviations:
+                if "mad" in key:
+                    accuracies["aoa_" + key] = mean_absolute_deviations[key]
+            
         if self.world_size > 1:
             # Make sure all processes have finished before removing zeroshot directory
             dist.barrier()
