@@ -79,13 +79,15 @@ class BlimpEvaluator(object):
             ) as f:
                 accuracies["blimp_" + task] = json.load(f)["eval_accuracy"]
 
+        accuracies["blimp_avg"] = sum(accuracies.values()) / len(accuracies)
+
         with open(
             os.path.join(
-                self.out_dir, "aoa_prediction", "extracted_average_surprisals.json"
+                self.out_dir, "aoa_prediction", "mean_absolute_deviation_results.json"
             )
         ) as f:
             mean_absolute_deviations = json.load(f)
-            for key in mean_absolute_deviations:
+            for key in mean_absolute_deviations.keys():
                 if "mad" in key:
                     accuracies["aoa_" + key] = mean_absolute_deviations[key]
             
@@ -96,6 +98,7 @@ class BlimpEvaluator(object):
         # Delete the zeroshot directory; ensure that only one process does this
         if self.process_index == 0 and not self.keep_predictions:
             shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
+            shutil.rmtree(os.path.join(self.out_dir, "aoa_prediction"))
 
         return accuracies
 

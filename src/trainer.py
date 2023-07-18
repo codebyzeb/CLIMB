@@ -737,7 +737,6 @@ class CustomTrainer(Trainer):
             )
             # Get average of blimp metrics
             blimp_metrics = blimp_evaluator()
-            blimp_metrics["blimp_avg"] = sum(blimp_metrics.values()) / len(blimp_metrics)  # type: ignore
             evaluator_metrics.update(blimp_metrics)  # type: ignore
 
         if self.eval_glue or self.eval_msgs:
