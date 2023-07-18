@@ -4,7 +4,7 @@ defaults:
     - pos_noun_verb
 
 steps: {
-  "pos_noun_verb": [0.0,0.1],
-  "mlm": [0.1,1.0]
+  "pos_noun_verb": [0.0,0.2],
+  "mlm": [0.2,1.0]
 }
 
