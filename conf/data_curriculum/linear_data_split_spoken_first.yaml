@@ -1,6 +1,6 @@
   difficulty_scorer_name: "data_split"
   difficulty_scorer_kwargs: {"spoken_first": True,
-                             "uniform_sampling": False}
+                             "uniform_sampling": True}
   pacing_fn_name: "linear"
   pacing_fn_kwargs: {"start_percent": 0.0,
                     "end_percent": 1.0,
