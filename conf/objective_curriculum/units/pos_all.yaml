@@ -1,4 +1,4 @@
-pos_noun_verb_adj: 
+pos_all: 
   task_head_params: {}
 
   optimizer_params: { 
