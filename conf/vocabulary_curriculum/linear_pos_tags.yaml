@@ -1,0 +1,6 @@
+vocabulary_curriculum_name: "pos_tags"
+pacing_fn_name: "linear"
+pacing_fn_kwargs: {"start_percent": 0.1,
+                  "end_percent": 0.8,
+                  "starting_difficulty": 0.2,
+                  "max_difficulty": 1.0}

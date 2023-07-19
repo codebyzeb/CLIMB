@@ -10,7 +10,6 @@ def copy_run(run_path, new_group):
     api = wandb.Api()
     old_run = api.run(run_path)
     eval_best = {k : v for k, v in old_run.summary.items() if 'eval' in k and 'best' in k}
-    eval_best['step'] = old_run.lastHistoryStep
 
     new_run = wandb.init(
         config=old_run.config,
