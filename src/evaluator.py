@@ -298,7 +298,7 @@ def collect_results(out_dir: str):
 
     cmd = (
             "cd lib/evaluation-pipeline; ../../env/bin/python collect_results.py"
-            + f" --model_path ../../{out_dir}"
+            + f" ../../{out_dir}"
         )
 
     output = subprocess.run(cmd, shell=True, capture_output=True, env=os.environ.copy())
