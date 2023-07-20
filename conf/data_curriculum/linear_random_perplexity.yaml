@@ -1,5 +1,5 @@
   difficulty_scorer_name: "self_perplexity"
-  difficulty_scorer_kwargs: {"n_gram": 1,
+  difficulty_scorer_kwargs: {"n_gram": 0,
                               "update": 25000,
                               "uniform_sampling": True}
   pacing_fn_name: "linear"

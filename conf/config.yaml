@@ -3,7 +3,7 @@ defaults:
   - _self_
   - dataset: strict_small 
   - objective_curriculum: base_mlm
-  - model: roberta_pln_medium
+  - model: roberta_pln_small
   - tokenizer: cbt_8192
 
 dataset: 

@@ -7,6 +7,6 @@ defaults:
 steps: {
   "pos_noun_verb": [0.0,0.0625],
   "pos_all": [0.0625,1.0],
-  "mlm": [0.125,1.0],
+  "mlm": [0.0,1.0],
 }
 

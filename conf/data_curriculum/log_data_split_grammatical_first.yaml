@@ -2,7 +2,7 @@
   difficulty_scorer_kwargs: {"spoken_first": False,
                              "uniform_sampling": True}
   pacing_fn_name: "log"
-  pacing_fn_kwargs: {"start_percent": 0.0,
-                    "end_percent": 0.8,
+  pacing_fn_kwargs: {"start_percent": 0.0625, # Start after 25k steps
+                    "end_percent": 0.875,
                     "starting_difficulty": 0.1,
                     "max_difficulty": 1.0}

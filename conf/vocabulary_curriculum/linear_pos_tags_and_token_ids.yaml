@@ -1,6 +1,6 @@
 vocabulary_curriculum_name: "pos_tags_and_token_ids"
 pacing_fn_name: "linear"
-pacing_fn_kwargs: {"start_percent": 0.1,
-                  "end_percent": 0.8,
-                  "starting_difficulty": 0.2,
+pacing_fn_kwargs: {"start_percent": 0.0625, # Start after 25k steps
+                  "end_percent": 0.875,
+                  "starting_difficulty": 0.1,
                   "max_difficulty": 1.0}
