@@ -1,7 +1,11 @@
 ![cover-banner](./misc/cover.png)
 # BabyLM
 
-Cambridge University & Collaborator's submission to the [Baby LM Challenge](https://babylm.github.io/). 
+Cambridge University & Collaborator's submission to the [Baby LM Challenge](https://babylm.github.io/) (strict track). The Baby LM challenge requires teams to train language models on the same amount of data that a child might plausibly see (on the order of 10 million words). 
+
+The accompanying paper to this codebase is titled: **Curriculum Learning for Infant-inspired Model Building**.
+
+In our submission to the Baby LM challenge, we explore different curriculum learning methods that simulate how humans learn languages. In particular, we define three different types of curriculum learning (vocab curriculum learning, data curriculum learning and objective curriculum learning) that each tweek a central aspect of the machine learning pipeline: the data processing, the data sampling and the objective function. The results of our experiments are summarized in our paper. 
 
 ## Setup 
 
@@ -17,10 +21,6 @@ Before running the code, make sure to run the setup script `./setup.sh`. This sc
 
 The entry point to the codebase is the `train.py` file. This file expects to receive a hydra-style config file that stores all relevant parameters for the dataset, data processing, tokenization, and model training. [Hydra](https://hydra.cc/docs/tutorials/structured_config/intro/) provides a system for structuring config files in a hierarchical, decomposable format.
 
-Our BabyLM project is particularly interested in looking at curriculum learning and its use in low-resource, cognitively-plausible language modeling. We hope to train a transformer language model via a curriculum that resembles how humans learn language, and through this show that the resulting moodel can acquire both syntax and high-level language understanding even with limited data. 
-
-We experiment with two distinct types of curriculum learning: data-driven curricula and objective-driven curricula. The idea of data-driven curriculum learning is to dynamically change the type of data that a model is exposed to over the course of training. Initially, we might want to show the model simpler data (note that how difficulty is defined is a parameter that we experiment with) and later in training ramp up the difficulty, as the model begins to master simpler concepts. Objective-driven curriculum learning, on the other hand, looks at adapting the objective function that is used to train the model over the course of training. As in the data-driven setting, the high-level goal is to bootstrap quick language learning of the model by initially training it to perform 'easier' tasks and later increase the difficulty of the objective. 
-
 In the subsequent section, we outline the high-level structure of our code-base. 
 
 ### Config Files
@@ -28,35 +28,47 @@ Under `/src/config.py` you will find the general structure of the hydra config f
 
 We run automatic type-checking on all the passed in config files, and also check that there are no missing required parameters of the config file. If there are, we raise an error.
 
-The `/conf` directory stores all the default configs and subconfigs. The entry point to the default config we use is `conf/config.yaml`. Taking a look at the `conf` directory, you will notice that each sub-directory of `conf` (i.e. `conf/data_curriculum`) stores a sub-configuration. One feature that stands out is that we separate two types of curriculum learning sub-configurations (one for `data_curriculum` and one for `objective_curriculum`) -  the first revolves around ordering the data according to some difficulty function and continuously increasing the threshold of data avalaible to the model at some rate during the training loop. The second method revoles around changing the model's objective (i.e. masking) function at specified, discrete training steps.
+The `/conf` directory stores all the default configs and subconfigs. The entry point to the default config we use is `conf/config.yaml`. Taking a look at the `conf` directory, you will notice that each sub-directory of `conf` (i.e. `conf/data_curriculum`) stores a sub-configuration. One feature that stands out is that we separate three types of curriculum learning sub-configurations (one for `vocab_curriculum`, one for `data_curriculum`, and one for `objective_curriculum`) -  The first establishes strategies for dynamically masking out vocabulary units over the course of training. The second enables dynamically sampling the training data according to some difficulty function which is updated throughout training. The third method provides functionality for changing the objective function at specified, discrete training steps.
 
-#### Specifying a data-driven curriculum learning strategy 
-In order to specify a data-driven training curriculum, you must set three arguments as part of the `conf/data_curriculum` sub-config: `scoring_fn`, `pacing_fn`, and `pacing_fn_kwargs`. The scoring (aka difficulty) function should be the name of a feature in your dataset by which you want to order your data. By default, the Trainer will sort data in an ascending fashion, i.e. in increasing difficulty w.r.t this feature. This could be n_gram_perplexity, sentence_length, etc. 
 
-The pacing function is one of `['linear', 'quad', 'root', 'step', 'exp', 'log']` or `None`. This function controls the rate at which the training loop will increase the range of data available to be sampled by the model. The keyword arguments passed in the dictionary `pacing_fn_kwargs` control (1) `start_percent`: the percentage of the dataset which is seen at the first step (2) `num_steps`: the number of steps over which the pacing function will increase the threshold of data, thus defining the curriculum learning region. and (3) `end_percent`: the percentage of the `num_steps` at which to release all of the training data for use in training, regardless of the current threshold set by the pacing function. 
+#### Specifying either a vocab- or data-driven curriculum learning strategy 
+In order to specify either a vocab- or a data-driven training curriculum, you must set a `pacing_fn` as well as `pacing_fn_kwargs`. The pacing function is one of `['linear', 'quad', 'root', 'step', 'exp', 'log']` or `None`. This function controls the rate at which the training loop will - depending on the type of curriculum - increase either the amount of vocab units unmasked (in the case of vocab curriculum learning) or the data difficulty that is sampled at each training step (in the case of data curriculum learning). The keyword arguments passed in the dictionary `pacing_fn_kwargs` control (1) `start_percent`: the percentage of the dataset which is seen until the curriculum learning protocol is actigvated (2) `num_steps`: the number of steps over which the pacing function will be active, thus defining the curriculum learning region, and (3) `end_percent`: the percentage of the `num_steps` at which to stop curriculum learning.
 
-Using the default values as an example, the first 10% of the sorted dataset would be sampled during the first training step, increasing per training step as specified by the pacing function, until the training step is (`end_percent`=0.8 x `num_steps`=10_000) 8_000, where the model now samples the full dataset until the end of training, regardless of the threshold that would have been by the pacing function.
+When using a vocab curriculum learning, users must additionally specify the name of the vocab curriculum, `vocab_curriculum_name`. 
+
+When using a data curriculum learning, users must additionally specify the name of the difficulty scorer, `difficulty_scorer_name`. The difficulty scorer function should be the name of a feature in your dataset by which you want to order your data. By default, the Trainer will sort data in an ascending fashion, i.e. in increasing difficulty w.r.t this feature. This could be n_gram_perplexity, sentence_length, etc. You can also specify additional kwargs, `difficulty_scorer_kwargs`, that should be passed to the scoring function.
+
 
 #### Specifying an objective-driven curriculum learning strategy 
-Specifying an objective-driven curriculum is slightly more involved than specifying a data-driven curriculum. For objective-driven curricula you need to first specify a general strategy, by creating a new `<strategy_name>.yaml` in the `conf/curriculum` directory (cf. `conf/curriculum/mlm_to_pos.yaml` as a template). This strategy stores information relating to what objectives will be used over the course of training and when to switch the training objective. Each training objective - what we call objective units - that you plan to use over the course of training also needs to be specified. These could be "mlm", "pos", or other custom objectives specified by config files in the `curriculum/units` dir. The strategy config is where you define a dictionary `steps`, which maps integer training step numbers to the string name of the training objective specified in the units. Objectives can be reused, e.g. ```steps: {0: "mlm", 10_000: "pos", 20_000: "mlm"}```, or specified under defaults and not used in the steps dict. 
+Specifying an objective-driven curriculum is slightly more involved than specifying either a vocab- or data-driven curriculum. For objective-driven curricula you need to first specify a general strategy, by creating a new `<strategy_name>.yaml` in the `conf/objective_curriculum` directory. This strategy stores information relating to what objectives will be used over the course of training and when to switch the training objective. Each training objective - what we call objective units - that you plan to use over the course of training also needs to be specified. These could be "mlm", "pos", or other custom objectives specified by config files in the `curriculum/units` dir. The strategy config is where you define a dictionary `steps`, which maps integer training step spans over which each objective unit is active. 
 
 ### DataLoading 
 
-We define a CustomDataLoader in `/src/dataloader.py` that subclasses the normal hugging face Dataloader class. In the CustomDataLoader, unlike in the normal DataLoader, we are able to keep track of the global step number of training (i.e. how many batches of training data have already been trained on). This information is useful because it allows us to configure special behavior of the DataLoader for different parts of training. In particular, when the CustomDataLoader goes to yield a next batch of data, we enable the DataLoader to check whether at the current step it should apply a different collator function to preprocess the data for a given (perhaps new) objective function. 
+We define a CustomDataLoader in `/src/dataloader.py` that subclasses the normal hugging face Dataloader class. In the CustomDataLoader, unlike in the normal DataLoader, we are able to keep track of the global step number of training (i.e. how many batches of training data have already been trained on). This information is useful because it allows us to configure special behavior of the DataLoader for different parts of training -- this is key for implementing the vocab-, data-, and objective- curricula. 
+
+ In particular, when the CustomDataLoader goes to yield a next batch of data, we enable the DataLoader to check whether at the current step it should apply a different collator function to preprocess the data for a given (perhaps new) objective function. 
 
 Thus, the CustomDataLoader is where the main logic for objective-driven curricula is implemented.  
 
-### DataSampling 
+### Vocab Curriculum Learning 
 
-In addition to a DataLoader, we also implement a custom sampler, CurriculumSampler, under `/src/datasampler.py`. We mentioned in the previous section that it is in the DataLoader that takes care of most of the logic related to objective-driven curriculum learning. In turn, it is in the DataSampler where we implement the logic pertaining to the data-driven curriculum learning approaches. As is standard, when we initialize the CustomDataLoader we pass it an instance of the CurriculumSampler. Just like the CustomDataLoader has access to a global step so to the CurriculumSampler stores the current global step of training, in order to adapt its sampling behavior conditioned on the current training step. The CurriculumSampler uses this information in order to determine if it should sample the indices for the next batch of samples from a smaller subsample of the total dataset. The purpose for this is so that the CurriculumSampler is forced to sample early in training easier, easier training samples (and over the course of training progressively ramp up the difficulty of the samples). The CurriculumSampler has access to a pacing function (`pacing_fn`) that it uses to determine the overall maximal difficulty of samples that it can draw at any given global step number.
+All classes associated with vocab curriculum learning are organized under `/src/vocabulary_curriculum`. The main idea behind our curriculum learning approach is to implement a mapping function that at a given step can take the output of the data loader and map certain vocab units to `unk`. The vocab curriculum learning also relies on a pacing function to determine the amount of vocab units that should be masked. This is all supported by the fact that the data loader has access to the current global training step. 
+
+### Data Curriculum Learning -- DataSampling 
+
+All classes associated with data curriculum learning are organized under `/src/data_curriculum`. The data curriculum is powered by our custom CurriculumSampler. As is standard, when we initialize the CustomDataLoader we pass it an instance of the CurriculumSampler. Just like the CustomDataLoader has access to a global step so to the CurriculumSampler stores the current global step of training, in order to adapt its sampling behavior conditioned on the current training step. The CurriculumSampler uses this information in order to determine if it should sample the indices for the next batch of samples from a smaller subsample of the total dataset. The purpose for this is so that the CurriculumSampler is forced to sample early in training easier, easier training samples (and over the course of training progressively ramp up the difficulty of the samples). The CurriculumSampler has access to a pacing function (`pacing_fn`) that it uses to determine the overall maximal difficulty of samples that it can draw at any given global step number.
 
 ### The Objective Function 
 
-We define anything to do with the objective function currently inside of the `src/objective.py` module. Currently, the main functionality of this module is to return a given DataCollator (a subclass of `transformer.DataCollator`), given the current global step and the objective curriculum learning strategy. The CustomDataLoader calls on this helper function, to receive at the current step the DataCollator to use. 
+We define anything to do with the objective function currently inside of the `src/objective_curriculum` module. The objective curriculum is organized around an orchestrator class `ObjectiveCurriculum` that - just like the data loader - maintains the current global step and uses that information to determine which objective units should be activated. The `ObjectiveCurriculum`, when queried, can then return individual objective units which are implemented under `src/objective_curriculum/units`. Each unit stores its own weights associated with the task head for the objective it implements, as well as an optimizer and scheduler. During training when data is fed through the model we first compute the hidden state of the model for a given batch of data and then pass those hidden states on to each of the task units. 
 
 ### Preprocessing and Tokenization
 
-Data preprocessing and tokenization helper methods can be found under `/src/preprocessing.py` and `/src/tokenization.py`. 
+Other useful methods for data preprocessing, tokenizer and inference can be found under `src/utils`.
+
+### Evaluation
+
+The evaluation of the model on GLUE and BLIMP tasks is done by calling on third-party libraries that are part of the submodules of this project.
 
 ### Model Architecture 
 
