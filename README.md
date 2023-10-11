@@ -1,5 +1,5 @@
 ![cover-banner](./misc/cover.png)
-# BabyLM
+# CLIMB - Curriculum Learning for Infant-inspired Model Building
 
 Cambridge University & Collaborator's submission to the [Baby LM Challenge](https://babylm.github.io/) (strict track). The Baby LM challenge requires teams to train language models on the same amount of data that a child might plausibly see (on the order of 10 million words). 
 
