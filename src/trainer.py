@@ -17,18 +17,15 @@ from huggingface_hub.utils._errors import HfHubHTTPError
 from omegaconf import OmegaConf
 
 # Data loading
-from torch.utils.data import DataLoader, RandomSampler
-from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader 
 from tqdm import tqdm
 
 # Model Training
 from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
-from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.trainer_utils import (
     HubStrategy,
     IntervalStrategy,
-    has_length,
     speed_metrics,
 )
 from transformers.training_args import ParallelMode, TrainingArguments
@@ -44,21 +41,9 @@ from src.utils.inference import (
     compute_trainer_perplexity,
     prepare_dataset_for_ppl_inference,
 )
-from wandb import Table
 
 # typing imports
 from .config import BabyLMConfig
-
-# Data Sampling and Data Curriculum
-from .data_curriculum.datasampler import (
-    CurriculumSampler,
-    DistributedCurriculumSampler,
-)
-from .data_curriculum.difficulty_scorer import get_difficulty_scorer
-from .data_curriculum.pacing_fn import get_pacing_fn
-
-# Curriculum Data Loader (used for both objective and data-driven curriculum)
-from .dataloader import CurriculumDataLoader
 
 # Model Evaluation
 from .evaluator import BlimpEvaluator, FinetuneEvaluator
@@ -66,37 +51,10 @@ from .evaluator import BlimpEvaluator, FinetuneEvaluator
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
 
-# Tokenization
-from .vocabulary_curriculum.vocabulary_map import get_vocabulary_map
+from .dataloader import CurriculumDataLoader
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
-data_cl_logger = logging.getLogger("Data Curriculum")
-
-
-class CurriculumLearningCallback(TrainerCallback):
-    """
-    A TrainerCallback that updates the data sampler and data collator with the current global step of training.
-    """
-
-    def on_train_begin(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        train_dataloader,
-        **kwargs,
-    ):
-        train_dataloader.global_stepnum = state.global_step
-
-    def on_step_end(self, *_, train_dataloader, **kwargs) -> None:
-        if isinstance(
-            train_dataloader.sampler,
-            (CurriculumSampler, DistributedCurriculumSampler),
-        ):
-            train_dataloader.sampler.global_stepnum += 1
-
-        train_dataloader.global_stepnum += 1
 
 
 class TaskTrainerCallback(TrainerCallback):
@@ -118,7 +76,6 @@ class CustomTrainer(Trainer):
         dry_run: bool,
         args: TrainingArguments,
         tokenizer: PreTrainedTokenizerFast,
-        curriculum_learning_table: Union[Table, None] = None,
         **kwargs,
     ) -> None:
         """
@@ -134,9 +91,6 @@ class CustomTrainer(Trainer):
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
             * tokenizer (PreTrainedTokenizerFast): The tokenizer used for the current run.
-            * curriculum_learning_table (wandb.Table): The wandb table used to log the curriculum
-                learning progress -- i.e. the difficulty scores, the pacing function values, the
-                data that is being sampled.
         """
 
         self.hydra_config = hydra_config
@@ -152,8 +106,6 @@ class CustomTrainer(Trainer):
         super().__init__(args=args, **kwargs)
 
         self.objective_curriculum_cfg = hydra_config.objective_curriculum
-        self.data_curriculum_cfg = hydra_config.data_curriculum
-        self.vocabulary_curriculum_cfg = hydra_config.vocabulary_curriculum
 
         # NOTE: The hidden dimension of the base model (is the input dimension to the task head)
         # We check that this variable is set in the config file when loading the base model
@@ -172,19 +124,9 @@ class CustomTrainer(Trainer):
         objective_cl_logger.info(
             f"(Using objective curriculum configuration {self.objective_curriculum_cfg}"
         )
-        if self.data_curriculum_cfg:
-            data_cl_logger.info(
-                f"Using data curriculum configuration {self.data_curriculum_cfg}"
-            )
-        if self.vocabulary_curriculum_cfg:
-            data_cl_logger.info(
-                f"Using vocabulary curriculum {self.vocabulary_curriculum_cfg}"
-            )
 
         self.tokenizer = tokenizer
-        self.curriculum_learning_table = curriculum_learning_table
 
-        self.add_callback(CurriculumLearningCallback())
         self.add_callback(TaskTrainerCallback(self.objective_curriculum))
 
     def init_git_repo(self, at_init: bool = False) -> None:
@@ -278,81 +220,6 @@ class CustomTrainer(Trainer):
         )
         OmegaConf.save(self.hydra_config, config_output_path)
 
-    def _get_train_sampler(self):
-        """
-        Overriding this method to use custom samplers that enable data-driven curriculum pacing.
-        """
-
-        if self.train_dataset is None or not has_length(self.train_dataset):
-            return None
-
-        generator = None
-        if self.args.world_size <= 1:
-            generator = torch.Generator()
-            # for backwards compatibility, we generate a seed here (which is sampled from a generator seeded with
-            # `args.seed`) if data_seed isn't provided.
-            # Further on in this method, we default to `args.seed` instead.
-            if self.args.data_seed is None:
-                seed = int(torch.empty((), dtype=torch.int64).random_().item())
-            else:
-                seed = self.args.data_seed
-            generator.manual_seed(seed)
-
-        seed = (
-            self.args.data_seed
-            if self.args.data_seed is not None
-            else self.args.seed
-        )
-
-        if self.data_curriculum_cfg:
-            # A data-driven curriculum assumes we are using a difficulty scorer along with a
-            # curriculum pacing function to determine the order in which we sample data.
-
-            pacing_fn = get_pacing_fn(
-                self.data_curriculum_cfg.pacing_fn_name,
-                self.args.max_steps,
-                **self.data_curriculum_cfg.pacing_fn_kwargs,
-            )
-
-            difficulty_scorer = get_difficulty_scorer(
-                self.data_curriculum_cfg.difficulty_scorer_name,
-                self.data_curriculum_cfg.difficulty_scorer_kwargs,
-                trainer=self,
-            )
-
-            if self.args.world_size <= 1:
-                return CurriculumSampler(
-                    self.train_dataset,
-                    difficulty_scorer=difficulty_scorer,
-                    pacing_fn=pacing_fn,
-                    batch_size=self.args.per_device_train_batch_size,
-                    generator=generator,
-                    global_stepnum=self.state.global_step,
-                )
-            else:
-                return DistributedCurriculumSampler(
-                    self.train_dataset,
-                    difficulty_scorer=difficulty_scorer,
-                    pacing_fn=pacing_fn,
-                    batch_size=self.args.per_device_train_batch_size,
-                    generator=generator,
-                    global_stepnum=self.state.global_step,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    seed=seed,
-                )
-        else:
-            # We are not using a data-driven curriculum, so we can use the default sampler.
-            if self.args.world_size <= 1:
-                return RandomSampler(self.train_dataset, generator=generator)  # type: ignore
-            else:
-                return DistributedSampler(
-                    self.train_dataset,
-                    num_replicas=self.args.world_size,
-                    rank=self.args.process_index,
-                    seed=seed,
-                )
-
     def _get_ignore_columns(self, dataset) -> List[str]:
         """
         Returns the list of columns to ignore when training. This is used to remove columns that
@@ -386,80 +253,8 @@ class CustomTrainer(Trainer):
         if self.state.epoch is not None:
             logs["epoch"] = round(self.state.epoch, 2)
 
-        output = {**logs, **{"step": self.state.global_step}}
-        if "curriculum_learning_table" not in logs:
-            # NOTE: Everything in state will be serialized to a json file when we save
-            # a checkpoint - alas a wandb.Table is not
-            self.state.log_history.append(output)
         self.control = self.callback_handler.on_log(
             self.args, self.state, self.control, logs
-        )
-
-    def get_train_dataloader(self) -> DataLoader:
-        """
-        Returns the training :class:`~torch.utils.data.DataLoader`.
-        The dataset is sorted by the scoring function, if provided.
-
-        Returns:
-            * (CustomDataLoader): The custom training dataloader, a subclass instance of the torch
-                Dataloader.
-        """
-
-        assert self.train_dataset is not None
-
-        # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
-        # training, we only remove the filename column here.
-        # The other columns in the datast should now be either of type float or int
-        # (filename is the only str column).
-        # We will remove the other columns in a postprocessing step (after the objective
-        # function collation).
-
-        train_sampler = self._get_train_sampler()
-
-        train_dataset = self.train_dataset.remove_columns("filename")  # type: ignore
-
-        # NOTE: In a postprocessing step (after the objective function collation), we will still
-        # need to remove columns that are not in the model signature. We need to pass in these
-        # ignore columns to the dataloader so that they are not included in the batch, but we
-        # might want to use this information when generating the objective.
-        ignore_columns = self._get_ignore_columns(train_dataset)
-
-        assert (
-            self.tokenizer is not None
-        ), "Tokenizer is not set. Please set the tokenizer before calling the train method."
-
-        # Create the vocabulary map according to the tokenizer curriculum
-        if self.vocabulary_curriculum_cfg:
-            pacing_fn = get_pacing_fn(
-                self.vocabulary_curriculum_cfg.pacing_fn_name,
-                self.args.max_steps,
-                **self.vocabulary_curriculum_cfg.pacing_fn_kwargs,
-            )
-
-            # NOTE: This assert statement should never fail, since we run a similar check on the
-            # tokenizer before initializing the trainer. It is needed, however, to narrow the type
-            # to pass type checking.
-            assert isinstance(self.tokenizer, PreTrainedTokenizerFast)
-            vocabulary_map = get_vocabulary_map(
-                self.vocabulary_curriculum_cfg.vocabulary_curriculum_name,
-                self.tokenizer,
-                pacing_fn,
-            )
-        else:
-            vocabulary_map = None
-
-        return CurriculumDataLoader(
-            global_stepnum=self.state.global_step,
-            objective_curriculum=self.objective_curriculum,  # type: ignore
-            tokenizer=self.tokenizer,
-            vocabulary_map=vocabulary_map,  # type: ignore
-            ignore_columns=ignore_columns,
-            dataset=train_dataset,
-            sampler=train_sampler,
-            batch_size=self._train_batch_size,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
         )
 
     def compute_loss(self, model, inputs, **kwargs):
@@ -498,117 +293,49 @@ class CustomTrainer(Trainer):
 
             self.log(loss_metrics)
 
-            ### --- LOGGING OUT CURRICULUM LEARNING RELATED METRICS AND SAMPLES --- ###
-
-            if self.curriculum_learning_table is not None:
-
-                if len(self.curriculum_learning_table.data) > 0:
-                    # NOTE: this might be bug prone (rdm)
-                    max_table_step = int(
-                        self.curriculum_learning_table.data[-1][0]
-                    )
-
-                    if max_table_step >= self.state.global_step:
-                        # The table has already been logged for this step; just skip logging table
-                        return total_loss
-
-                ## Data Curriculum Learning Related ##
-
-                # decode the first 5 inputs
-                data_samples = ""
-                for i in range(5):
-                    data_samples += (
-                        f"{i+1}: "
-                        + self.tokenizer.decode(inputs["input_ids"][i])
-                        + "\n\n"
-                    )
-
-                if self.data_curriculum_cfg:
-                    data_difficulty_percentile = self.callback_handler.train_dataloader.sampler.pacing_fn(  # type: ignore
-                        self.state.global_step
-                    )
-                    difficulty_scores = torch.tensor(self.callback_handler.train_dataloader.sampler.difficulty_scorer.filtered_difficulty_scores)  # type: ignore
-                    difficulty_scores = difficulty_scores[
-                        difficulty_scores != 0
-                    ]  # Don't include the filtered-out scores
-                    num_samples = (
-                        difficulty_scores.shape[0] * self.args.world_size
-                    )
-                    data_sampled_percentile = num_samples / self.train_dataset.num_rows  # type: ignore
-                    max_difficulty_score = difficulty_scores.max().item()
-                    min_difficulty_score = difficulty_scores.min().item()
-                    median_difficulty_score = difficulty_scores.median().item()
-
-                else:
-                    data_difficulty_percentile = 1.0
-                    data_sampled_percentile = 1.0
-                    num_samples = len(self.callback_handler.train_dataloader.sampler) * self.args.world_size  # type: ignore
-                    max_difficulty_score = 0.0
-                    min_difficulty_score = 0.0
-                    median_difficulty_score = 0.0
-
-                ## Objective Curriculum Learning Related ##
-
-                active_curricula_units = ", ".join(
-                    list(
-                        self.objective_curriculum[
-                            self.state.global_step
-                        ].keys()
-                    )
-                )
-
-                ## Vocabulary Curriculum Learning Related ##
-
-                if self.vocabulary_curriculum_cfg:
-                    vocab_unmasked_percentile = self.callback_handler.train_dataloader.vocabulary_map.pacing_fn(  # type: ignore
-                        self.state.global_step
-                    )
-
-                    vocab_masked_samples = ""
-                    for i in range(5):
-                        vocab_masked_samples += (
-                            f"{i+1}: "
-                            + self.tokenizer.decode(
-                                inputs["masked_input_ids"][i]
-                            )
-                            + "\n\n"
-                        )
-                else:
-                    vocab_unmasked_percentile = 1.0
-                    vocab_masked_samples = data_samples
-
-                self.curriculum_learning_table.add_data(
-                    self.state.global_step,
-                    data_difficulty_percentile,
-                    data_sampled_percentile,
-                    num_samples,
-                    max_difficulty_score,
-                    min_difficulty_score,
-                    median_difficulty_score,
-                    data_samples,
-                    active_curricula_units,
-                    vocab_unmasked_percentile,
-                    vocab_masked_samples,
-                )
-                # if divisible by evaluation interval, log the table
-                if (
-                    self.args.evaluation_strategy == IntervalStrategy.STEPS
-                    and self.state.global_step
-                    % self.args.eval_steps  # type: ignore
-                    == 0
-                ):
-                    _curriculum_learning_table = Table(
-                        columns=self.curriculum_learning_table.columns,
-                        data=self.curriculum_learning_table.data,
-                    )
-
-                    self.log(
-                        {
-                            "curriculum_learning_table": _curriculum_learning_table,  # type: ignore
-                        }
-                    )
-
         return total_loss
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training :class:`~torch.utils.data.DataLoader`.
+        The dataset is sorted by the scoring function, if provided.
+
+        Returns:
+            * (CustomDataLoader): The custom training dataloader, a subclass instance of the torch
+                Dataloader.
+        """
+
+        assert self.train_dataset is not None
+
+        # NOTE: The standard Trainer.get_train_dataloader() method removes unused columns for
+        # training, we only remove the filename column here.
+        # The other columns in the datast should now be either of type float or int
+        # (filename is the only str column).
+        # We will remove the other columns in a postprocessing step (after the objective
+        # function collation).
+
+        train_sampler = self._get_train_sampler()
+
+        train_dataset = self.train_dataset.remove_columns("filename")  # type: ignore
+
+        # NOTE: In a postprocessing step (after the objective function collation), we will still
+        # need to remove columns that are not in the model signature. We need to pass in these
+        # ignore columns to the dataloader so that they are not included in the batch, but we
+        # might want to use this information when generating the objective.
+        ignore_columns = self._get_ignore_columns(train_dataset)
+
+        return CurriculumDataLoader(
+            global_stepnum=self.state.global_step,
+            objective_curriculum=self.objective_curriculum,  # type: ignore
+            tokenizer=self.tokenizer,
+            ignore_columns=ignore_columns,
+            dataset=train_dataset,
+            sampler=train_sampler,
+            batch_size=self._train_batch_size,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+        )
 
     def evaluate(
         self,

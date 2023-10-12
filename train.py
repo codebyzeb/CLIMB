@@ -158,51 +158,6 @@ def main(cfg: BabyLMConfig):
                 resume="allow",
             )
 
-            # Curriculum learning table: Stores useful information about the curriculum learning
-            # process (like the data that is being sampled, what objectives are being used, etc.)
-            if cfg.experiment.resume_run_id:
-                try:
-                    curriculum_learning_table = wandb.run.use_artifact(
-                        f"baby-lm/{cfg.experiment.group}/run-{cfg.experiment.resume_run_id}-traincurriculum_learning_table:latest",
-                    ).get("train/curriculum_learning_table")
-                except WandbCommError:
-                    logger.warning(
-                        "Could not find curriculum learning table artifact for run, creating new table"
-                    )
-                    curriculum_learning_table = wandb.Table(
-                        columns=[
-                            "global_step",
-                            "data_difficulty_percentile",
-                            "data_sampled_percentile",
-                            "num_samples",
-                            "max_difficulty_score",
-                            "min_difficulty_score",
-                            "median_difficulty_score",
-                            "data_samples",
-                            "active_curricula_units",
-                            "vocabulary_unmasked_percentile",
-                            "vocabulary_masked_samples",
-                        ]
-                    )
-            else:
-                curriculum_learning_table = wandb.Table(
-                    columns=[
-                        "global_step",
-                        "data_difficulty_percentile",
-                        "data_sampled_percentile",
-                        "num_samples",
-                        "max_difficulty_score",
-                        "min_difficulty_score",
-                        "median_difficulty_score",
-                        "data_samples",
-                        "active_curricula_units",
-                        "vocabulary_unmasked_percentile",
-                        "vocabulary_masked_samples",
-                    ]
-                )
-        else:
-            curriculum_learning_table = None
-
     # Set up training arguments
     # TODO: If we are using wandb sweeps, note that we will need to think about how we store/
     # initialize the name of the current experiment so that it doesn't interfere with the name
@@ -263,7 +218,6 @@ def main(cfg: BabyLMConfig):
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        curriculum_learning_table=curriculum_learning_table,
     )
 
     if not cfg.experiment.resume_checkpoint_path:

@@ -14,7 +14,6 @@ from transformers import PreTrainedTokenizerFast
 
 from src.objective_curriculum import ObjectiveCurriculum, StackedCollator
 from src.utils.data import base_collate_fn
-from src.vocabulary_curriculum.vocabulary_map import BaseVocabularyMap
 
 logger = logging.getLogger(__name__)
 objective_cl_logger = logging.getLogger("Objective Curriculum")
@@ -26,7 +25,6 @@ class CurriculumDataLoader(DataLoader):
         global_stepnum: int,
         objective_curriculum: ObjectiveCurriculum,
         tokenizer: PreTrainedTokenizerFast,
-        vocabulary_map: Optional[BaseVocabularyMap] = None,
         ignore_columns: Optional[List[str]] = None,
         num_workers: int = 0,
         **kwargs,
@@ -44,8 +42,6 @@ class CurriculumDataLoader(DataLoader):
             * tokenizer (PreTrainedTokenizerFast): The tokenizer used for preprocessing the data,
                 we require the tokenizer to be loaded in explicitly because we set objective
                 collator functions that are dependent on the tokenizer.
-            * vocabulary_map (Optional[BaseVocabularyMap], optional): The vocabulary map used
-                to restrict the vocabulary of the tokenizer. Defaults to None.
             * ignore_columns (Optional[List[str]], optional): A list of columns to ignore.
                 Defaults to None.
             * num_workers (int, optional): The number of workers to use. Defaults to 0.
@@ -53,7 +49,6 @@ class CurriculumDataLoader(DataLoader):
         self.global_stepnum = global_stepnum
         self.objective_curriculum = objective_curriculum
         self.tokenizer = tokenizer
-        self.vocabulary_map = vocabulary_map
         self.ignore_columns = ignore_columns
 
         if num_workers != 0:
@@ -150,24 +145,6 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
 
         if self._pin_memory:
             data = _torch_pin_memory(data, self._pin_memory_device)  # type: ignore[arg-type]
-
-        # Restrict the vocabulary based on the curriculum step
-        if self.loader.vocabulary_map is not None:
-
-            input_ids = data["input_ids"]
-
-            for data_key in data.keys():
-                if data_key.startswith("labels") or data_key.startswith(
-                    "input_ids"
-                ):
-                    # Map the labels for each objective function to <unk> if they are not in
-                    # the vocabulary
-                    data[data_key] = self.loader.vocabulary_map.map_tokens(
-                        data, data_key, self.loader.global_stepnum
-                    )
-
-            data["masked_input_ids"] = data["input_ids"]
-            data["input_ids"] = input_ids
 
         # remove ignored columns
 
