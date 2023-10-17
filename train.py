@@ -7,9 +7,6 @@ import os
 import hydra
 import torch
 
-# wandb for logging metrics
-import wandb
-
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
@@ -18,6 +15,8 @@ from torch.distributed.elastic.multiprocessing.errors import record
 from transformers.training_args import TrainingArguments
 from wandb.errors import CommError as WandbCommError
 
+# wandb for logging metrics
+import wandb
 from src.config import BabyLMConfig
 from src.evaluator import collect_results
 from src.models import load_base_model
@@ -238,7 +237,7 @@ def main(cfg: BabyLMConfig):
         save_strategy="steps",
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.offline_run,
-        hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
+        hub_model_id=f"cambridge-climb/{cfg.experiment.group}-{cfg.model.name}-model"
         if not cfg.experiment.offline_run
         else None,
         hub_token=os.environ["HF_WRITE_TOKEN"]
