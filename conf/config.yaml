@@ -7,7 +7,7 @@ defaults:
   - tokenizer: cbt_8192
 
 dataset: 
-  name: 'CamBabyTrainers/BabyLM'
+  name: 'cambridge-climb/BabyLM'
 
 model:
   model_kwargs:
