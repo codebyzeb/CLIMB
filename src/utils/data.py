@@ -63,6 +63,11 @@ class SequentialSubsetSampler(Sampler):
 class POSLookup(object):
     def __init__(self, dataset: Dataset, tokenizer: PreTrainedTokenizerFast):
         """
+        Functionality for interacting with the POS tag distribution of different subwords. 
+
+        Can be used to lookup the POS tag distribution of a given subword, or to find similar
+        subwords based on the POS tag distribution of a given subword.
+        
         Args:
             dataset (Dataset): dataset to lookup POS tags for; 
                 assumes that the dataset has already been run through the DatasetPreprocessor
@@ -80,6 +85,12 @@ class POSLookup(object):
             for k, v in d.items():
                 combined_dict[k].extend(v)
         return combined_dict
+
+    def lookup(self, token: str) -> torch.Tensor:
+        raise NotImplementedError
+
+    def find_similar(self, token: str, similarity_measure: float) -> List[str]:
+        raise NotImplementedError
     
     def build_lookup(self) -> torch.Tensor:
 
