@@ -6,10 +6,9 @@ import logging
 from typing import Dict, List, Optional
 
 from torch import Tensor
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterDataPipe, MapDataPipe
 from torch.utils.data._utils.pin_memory import pin_memory as _torch_pin_memory
 from torch.utils.data.dataloader import _BaseDataLoaderIter, _DatasetKind
-from torch.utils.data.datapipes.datapipe import IterDataPipe, MapDataPipe
 from transformers import PreTrainedTokenizerFast
 
 from src.objective_curriculum import ObjectiveCurriculum, StackedCollator

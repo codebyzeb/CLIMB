@@ -1,7 +1,6 @@
 """ Tokenizer module """
 
 import logging
-import os
 
 # typing imports
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
@@ -29,7 +28,6 @@ def load_tokenizer(cfg: BabyLMConfig) -> PreTrainedTokenizerFast:
 
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
         cfg.tokenizer.name,
-        use_auth_token=os.environ["HF_READ_TOKEN"],
         **tokenizer_kwargs,
     )  # type: ignore
 

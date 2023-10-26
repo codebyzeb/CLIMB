@@ -127,7 +127,7 @@ class DatasetPreprocessor(object):
             # Original dataset doesn't have pos tags
             if "original" in self.dataset_subconfig:
                 pos_tags = [POS_TAG_MAP["X"]] * len(
-                    tokenized_inputs["input_ids"]
+                    tokenized_inputs["input_ids"]  # type: ignore
                 )
             else:
                 subwords = [text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
@@ -159,29 +159,29 @@ class DatasetPreprocessor(object):
 
             if self.join_sentences:
                 full_tokenized_inputs["input_ids"].extend(
-                    tokenized_inputs["input_ids"]
+                    tokenized_inputs["input_ids"]  # type: ignore
                 )
                 full_tokenized_inputs["special_tokens_mask"].extend(
-                    tokenized_inputs["special_tokens_mask"]
+                    tokenized_inputs["special_tokens_mask"]  # type: ignore
                 )
                 full_tokenized_inputs["attention_mask"].extend(
-                    tokenized_inputs["attention_mask"]
+                    tokenized_inputs["attention_mask"]  # type: ignore
                 )
-                full_tokenized_inputs["pos_tags"].extend(pos_tags)
+                full_tokenized_inputs["pos_tags"].extend(pos_tags)  # type: ignore
                 full_tokenized_inputs["filename"].extend(
-                    [filename] * len(tokenized_inputs["input_ids"])
+                    [filename] * len(tokenized_inputs["input_ids"])  # type: ignore
                 )
             else:
                 # Split into multiple examples if the input is too long
                 for i in range(
                     0,
-                    len(tokenized_inputs["input_ids"]),
+                    len(tokenized_inputs["input_ids"]),  # type: ignore
                     self.max_input_length,
                 ):
                     # Check if the final example would contain only special tokens and if so, don't include it
                     if (
                         sum(
-                            tokenized_inputs["special_tokens_mask"][
+                            tokenized_inputs["special_tokens_mask"][  # type: ignore
                                 i : i + self.max_input_length
                             ]
                         )

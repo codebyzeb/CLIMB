@@ -7,17 +7,15 @@ import os
 import hydra
 import torch
 
-# wandb for logging metrics
-import wandb
-
 # training pipeline imports
 from datasets import DatasetDict, load_dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from torch.distributed.elastic.multiprocessing.errors import record
 from transformers.training_args import TrainingArguments
-from wandb.errors import CommError as WandbCommError
 
+# wandb for logging metrics
+import wandb
 from src.config import BabyLMConfig
 from src.evaluator import collect_results
 from src.models import load_base_model
@@ -42,10 +40,6 @@ DIFFICULTY_SCORER_UPDATE = 75
 @record
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
-    assert (
-        "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
-    ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
-
     missing_keys: set[str] = OmegaConf.missing_keys(cfg)
     if missing_keys:
         raise RuntimeError(f"Missing keys in config: \n {missing_keys}")
@@ -64,28 +58,11 @@ def main(cfg: BabyLMConfig):
         cfg.trainer.max_training_steps = DRY_RUN_TRAIN_STEPS
         cfg.trainer.num_warmup_steps = DRY_RUN_WARMUP_STEPS
 
-        if (
-            cfg.data_curriculum is not None
-            and cfg.data_curriculum.difficulty_scorer_kwargs is not None
-        ):
-
-            if (
-                cfg.data_curriculum.difficulty_scorer_kwargs.get("update")
-                is not None
-            ):
-                cfg.data_curriculum.difficulty_scorer_kwargs[
-                    "update"
-                ] = DIFFICULTY_SCORER_UPDATE
-                logger.info(
-                    f"\t data curriculum difficulty scorer update: {DIFFICULTY_SCORER_UPDATE}"
-                )
-
     # Loading dataset
     logger.info("Loading dataset")
     dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
-        use_auth_token=os.environ["HF_READ_TOKEN"],
     )  # type: ignore
 
     assert isinstance(dataset, DatasetDict), "Dataset is not a DatasetDict"
@@ -130,7 +107,6 @@ def main(cfg: BabyLMConfig):
     if cfg.experiment.offline_run:
         os.environ["WANDB_DISABLED"] = "true"
         os.environ["WANDB_MODE"] = "disabled"
-        curriculum_learning_table = None
     else:
         # These environment variables get picked up by Trainer
         os.environ["WANDB_PROJECT"] = cfg.experiment.group
@@ -193,7 +169,7 @@ def main(cfg: BabyLMConfig):
         save_strategy="steps",
         hub_strategy="every_save",
         push_to_hub=not cfg.experiment.offline_run,
-        hub_model_id=f"CamBabyTrainers/{cfg.experiment.group}-{cfg.model.name}-model"
+        hub_model_id=f"pos-merge/{cfg.experiment.group}-{cfg.model.name}-model"
         if not cfg.experiment.offline_run
         else None,
         hub_token=os.environ["HF_WRITE_TOKEN"]
