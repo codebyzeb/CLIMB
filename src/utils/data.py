@@ -9,9 +9,12 @@ from typing import Dict, List, Tuple
 
 import torch
 from torch.utils.data.sampler import Sampler
+from datasets import Dataset
 from transformers import PreTrainedTokenizerFast
 
 from src.config import BabyLMConfig
+
+from multiprocessing import Pool, cpu_count
 
 POS_TAG_MAP = {
     "NOUN": 0,
@@ -57,6 +60,74 @@ class SequentialSubsetSampler(Sampler):
     def __len__(self):
         return len(self.indices)
 
+class POSLookup(object):
+    def __init__(self, dataset: Dataset, tokenizer: PreTrainedTokenizerFast):
+        """
+        Args:
+            dataset (Dataset): dataset to lookup POS tags for; 
+                assumes that the dataset has already been run through the DatasetPreprocessor
+            tokenizer (PreTrainedTokenizerFast): tokenizer used to tokenize the dataset
+        """
+        self.dataset = dataset
+        self.tokenizer = tokenizer
+
+        self.lookup_matrix = self.build_lookup()
+
+    @staticmethod
+    def combine_defaultdicts(dicts_list: List[Dict[str, List[Tuple[int, float]]]]):
+        combined_dict = defaultdict(list)
+        for d in dicts_list:
+            for k, v in d.items():
+                combined_dict[k].extend(v)
+        return combined_dict
+    
+    def build_lookup(self) -> torch.Tensor:
+
+        # create pool with num cpus processes
+        assert isinstance(cpu_count(), int) and cpu_count() > 1, "CPU count must be greater than 1"
+        with Pool(processes=cpu_count()) as p: 
+            pos_dicts = p.map(self._build_lookup, [self.dataset.shard(num_shards=cpu_count(), index=idx) for idx in range(cpu_count())])
+
+        combined_dicts = self.combine_defaultdicts(pos_dicts)
+
+        lookup_matrix = torch.zeros((self.tokenizer.vocab_size, len(POS_TAG_MAP)))
+
+        # create combined_dicts_counts for each pos
+        lookup_counts = {}
+        for k, v in combined_dicts.items():
+            lookup_counts[k] = defaultdict(int)
+            for pos_tag in v:
+                lookup_counts[k][pos_tag] += 1
+
+        from tqdm import tqdm
+
+        for k, v in tqdm(lookup_counts.items()):
+            # For each word get the count and normalize by the sum of counts
+            total_counts = sum(v.values())
+
+            for pos_tag, count in v.items():
+                # noramlize each entry by the sum of counts
+                lookup_matrix[k][pos_tag] = count/total_counts
+
+        return lookup_matrix
+
+    @staticmethod
+    def _build_lookup(dataset_chunk) -> Dict[str, List[Tuple[int, float]]]:
+        """
+        Builds a lookup dictionary for the POS tags of the dataset; for each given word, we 
+        need to lookup the occurences of that word as part of different POS tags  
+        """ 
+
+        assert("pos_tags" in dataset_chunk.column_names)
+        pos_dict = defaultdict(list)
+
+        for example in dataset_chunk: 
+            for token, pos_tag, special_tokens in zip(example["input_ids"], example["pos_tags"], example["special_tokens_mask"]):
+                if special_tokens == 1: 
+                    continue
+                pos_dict[token].append((pos_tag))
+        
+        return pos_dict
 
 class DatasetPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
@@ -74,6 +145,7 @@ class DatasetPreprocessor(object):
         self.dataset_subconfig = cfg.dataset.subconfig
 
         self.tokenizer = tokenizer
+
 
     ### --- Callback functions --- ###
 
