@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -36,7 +36,7 @@ from transformers.utils import (
 
 # Model Loading
 from src.models import load_base_model
-from src.utils.data import base_collate_fn
+from src.utils.data import base_collate_fn, POSLookup
 from src.utils.inference import (
     compute_trainer_perplexity,
     prepare_dataset_for_ppl_inference,
@@ -76,6 +76,7 @@ class CustomTrainer(Trainer):
         dry_run: bool,
         args: TrainingArguments,
         tokenizer: PreTrainedTokenizerFast,
+        pos_lookup: Optional[POSLookup] = None,
         **kwargs,
     ) -> None:
         """
@@ -91,6 +92,8 @@ class CustomTrainer(Trainer):
                 in order to have access to possible arguments meant to be used in the Custom
                 Trainer class.
             * tokenizer (PreTrainedTokenizerFast): The tokenizer used for the current run.
+            * pos_lookup (Optional[POSLookup], *optional*, defaults to `None`): The POS lookup
+                object used to convert POS tags to indices.
         """
 
         self.hydra_config = hydra_config
@@ -126,6 +129,7 @@ class CustomTrainer(Trainer):
         )
 
         self.tokenizer = tokenizer
+        self.pos_lookup = pos_lookup
 
         self.add_callback(TaskTrainerCallback(self.objective_curriculum))
 
@@ -261,7 +265,6 @@ class CustomTrainer(Trainer):
         """
         We compute the loss for each objective unit, and then sum them up.
         """
-
         total_loss = torch.tensor(0.0).to(self.args.device)
 
         loss_metrics = {}
@@ -278,7 +281,13 @@ class CustomTrainer(Trainer):
         for unit_name, unit in self.objective_curriculum[
             self.state.global_step
         ].items():
-            unit_loss = unit.compute_loss(model, inputs)
+            optional_kwargs = {}
+            if unit_name == "pos_merge":
+                # NOTE: We need to pass in the pos lookup to the POS MERGE unit 
+                # as well as the global step in order to be able to use the temperature schedule
+                optional_kwargs["pos_lookup"] = self.pos_lookup
+                optional_kwargs["global_step"] = self.state.global_step
+            unit_loss = unit.compute_loss(model, inputs, loss_kwargs=optional_kwargs)
 
             # averaging over the processes
             total_unit_loss_scalar = self._nested_gather(unit_loss).mean().item()  # type: ignore

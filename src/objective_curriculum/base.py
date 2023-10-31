@@ -56,7 +56,7 @@ class ObjectiveCurriculum:
         # setup the different curiculum units
         for unit_name in self._curriculum_cfg.units:
 
-            if "pos" in unit_name:
+            if "pos" in unit_name and unit_name != "pos_merge":
                 # the unit_name might be pos_(+pos tag identifiers)
                 task_name = "pos"
             else:
@@ -123,7 +123,7 @@ class ObjectiveCurriculum:
         """
 
         assert (
-            "mlm" in curriculum_cfg.units
+            "mlm" in curriculum_cfg.units or "pos_merge" in curriculum_cfg.units
         ), "The masked language modeling objective is required."
 
         for unit in curriculum_cfg.units:

@@ -8,7 +8,7 @@ import hydra
 import torch
 
 # training pipeline imports
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset, Dataset
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 from torch.distributed.elastic.multiprocessing.errors import record
@@ -21,7 +21,7 @@ from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
-from src.utils.data import DatasetPreprocessor
+from src.utils.data import DatasetPreprocessor, POSLookup
 from src.utils.setup import set_seed
 
 # type-checks dynamic config file
@@ -60,6 +60,8 @@ def main(cfg: BabyLMConfig):
 
     # Loading dataset
     logger.info("Loading dataset")
+
+    assert("original" not in cfg.dataset.subconfig), "Cannot use original dataset for training; must use the POS tagged version"
     dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
@@ -81,12 +83,15 @@ def main(cfg: BabyLMConfig):
     logger.info("Preprocessing data")
     data_preprocessor = DatasetPreprocessor(cfg, tokenizer)
 
-    train_dataset = dataset["train"].map(
+    train_dataset: Dataset = dataset["train"].map(
         data_preprocessor,
         batched=True,
         num_proc=64,
         remove_columns=dataset["train"].column_names,
     )
+
+    logger.info("Initializing POS lookup table")
+    pos_lookup = POSLookup(train_dataset, tokenizer)
 
     if cfg.experiment.dry_run:
         logger.info(
@@ -194,9 +199,10 @@ def main(cfg: BabyLMConfig):
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
+        pos_lookup=pos_lookup,
     )
 
-    if not cfg.experiment.resume_checkpoint_path:
+    if not cfg.experiment.resume_checkpoint_path and not cfg.experiment.dry_run:
         trainer.evaluate()  # Initial model evaluation
     trainer.train(resume_from_checkpoint=cfg.experiment.resume_checkpoint_path)
 
