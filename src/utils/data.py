@@ -5,7 +5,7 @@ import string
 from collections import defaultdict
 
 # typing imports
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import torch
 from torch.utils.data.sampler import Sampler
@@ -61,7 +61,7 @@ class SequentialSubsetSampler(Sampler):
         return len(self.indices)
 
 class POSLookup(object):
-    def __init__(self, dataset: Dataset, tokenizer: PreTrainedTokenizerFast):
+    def __init__(self, dataset: Dataset, tokenizer: PreTrainedTokenizerFast, similarity_metric: str = "cosine"):
         """
         Functionality for interacting with the POS tag distribution of different subwords. 
 
@@ -72,11 +72,27 @@ class POSLookup(object):
             dataset (Dataset): dataset to lookup POS tags for; 
                 assumes that the dataset has already been run through the DatasetPreprocessor
             tokenizer (PreTrainedTokenizerFast): tokenizer used to tokenize the dataset
+            similarity_metric (str, optional): similarity metric to use for finding similar subwords.
+                The valid similarity metrics that we implement are: 
+                    * Cosine 
+                    * KL divergence 
+                    * Wasserstein Distance (Earth Mover's Distance)
         """
         self.dataset = dataset
         self.tokenizer = tokenizer
 
         self.lookup_matrix = self.build_lookup()
+
+        # compute pair-wise cosine similarity between all subwords, given the lookup matrix 
+
+        if similarity_metric == "cosine":
+            normalized_lookup_matrix = self.lookup_matrix / self.lookup_matrix.norm(dim=1)[:, None]
+            self.similarity_matrix = torch.matmul(normalized_lookup_matrix, normalized_lookup_matrix.T)
+        elif similarity_metric == "kl_divergence":
+            raise NotImplementedError
+        elif similarity_metric == "wasserstein_distance":
+            raise NotImplementedError
+        
 
     @staticmethod
     def combine_defaultdicts(dicts_list: List[Dict[str, List[Tuple[int, float]]]]):
@@ -86,11 +102,29 @@ class POSLookup(object):
                 combined_dict[k].extend(v)
         return combined_dict
 
-    def lookup(self, token: str) -> torch.Tensor:
-        raise NotImplementedError
+    def __getitem__(self, token: int) -> torch.Tensor:
+        return self.lookup_matrix[token]
 
-    def find_similar(self, token: str, similarity_measure: float) -> List[str]:
-        raise NotImplementedError
+    def find_similar(self, tokens: Union[torch.Tensor, int]) -> torch.Tensor:
+        """
+        Using the self.similarity_matrix, return a vector of that tokens' similarity to all other 
+        subwords tokens
+
+        Args:
+            tokens (Union[torch.Tensor, int]): either a tensor of tokens, or a single token id 
+                in the form of an int. The shape should just be 1-d (batch_size)
+
+        Returns:
+            A tensor with similarity values 
+
+        """
+
+        if isinstance(tokens, int):
+            tokens = torch.tensor([tokens])
+
+        similarity_values = self.similarity_matrix[tokens]
+
+        return similarity_values
     
     def build_lookup(self) -> torch.Tensor:
 
@@ -113,12 +147,10 @@ class POSLookup(object):
         from tqdm import tqdm
 
         for k, v in tqdm(lookup_counts.items()):
-            # For each word get the count and normalize by the sum of counts
-            total_counts = sum(v.values())
-
+            # For each word get the count 
+            # NOTE: The values are NOT normalized 
             for pos_tag, count in v.items():
-                # noramlize each entry by the sum of counts
-                lookup_matrix[k][pos_tag] = count/total_counts
+                lookup_matrix[k][pos_tag] = count
 
         return lookup_matrix
 
