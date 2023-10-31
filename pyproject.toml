@@ -22,6 +22,10 @@ name = "torch-custom"
 url = "https://download.pytorch.org/whl/cu113"
 priority = "supplemental"
 
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.26.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
