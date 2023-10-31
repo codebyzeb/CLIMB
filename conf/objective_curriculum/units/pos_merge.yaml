@@ -1,0 +1,20 @@
+pos_merge: 
+  task_head_params: {}
+
+  optimizer_params: { 
+    "lr": 1e-3,
+  }
+
+  scheduler_params: {}
+
+  optional_kwargs: { 
+    "mask_probability": 0.15,
+    "unmask_probability" : 0,
+    "temp_pacing_fn_kwargs": {
+      "pacing_fn_name": "log", 
+      "start_percent": 0.1, 
+      "end_percent": 1,
+      "start_temp": 10,
+      "end_temp": 0.1, 
+    }
+  }
