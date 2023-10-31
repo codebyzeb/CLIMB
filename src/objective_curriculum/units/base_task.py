@@ -160,6 +160,13 @@ class BaseTaskUnit(metaclass=ABCMeta):
             else inputs[f"labels_{self.task_unit_name}"]
         )
 
+
+        print("TEST")
+        print(logits.shape)
+        print(labels.shape)
+        exit()
+
+
         # compute the loss
         loss = cross_entropy(logits, labels, **(loss_kwargs or {}))
 

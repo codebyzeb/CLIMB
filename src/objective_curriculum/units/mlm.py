@@ -109,12 +109,6 @@ class MLMTask(BaseTaskUnit):
     ) -> None:
         """
         Initializes the masked language modeling task unit.
-
-        Args:
-            tokenizer (PreTrainedTokenizerFast): The tokenizer used for tokenizing the input,
-                used primarily for the objective collator.
-            task_unit_params (Mapping[str, Any]): The parameters for the task unit taken from the
-                objective curriculum configuration.
         """
         super().__init__(*args, **kwargs)
 
@@ -156,6 +150,10 @@ class MLMTask(BaseTaskUnit):
         assert (
             "mask_probability" in self.task_unit_params["optional_kwargs"]
         ), "Mask probability needs to be provided to use MLM task unit"
+
+        assert ( 
+            "unmask_probability" in self.task_unit_params["optional_kwargs"]
+        ), "Unmask probability needs to be provided to use MLM task unit"
 
     @property
     def objective_collator(self):

@@ -136,12 +136,6 @@ class POSTask(BaseTaskUnit):
         """
         Initializes the POS modeling task head. Underneath the hood this is just applying an MLM
         head, but where the classification is now over a set of POS tags.
-
-        Args:
-            tokenizer (PreTrainedTokenizerFast): The tokenizer used for tokenizing the input,
-                used primarily for the objective collator.
-            task_unit_params (Mapping[str, Any]): The parameters for the task unit taken from the
-                objective curriculum configuration.
         """
         super().__init__(*args, **kwargs)
 
