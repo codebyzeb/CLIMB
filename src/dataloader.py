@@ -143,7 +143,7 @@ class _CustomSingleProcessDataLoaderIter(_BaseDataLoaderIter):
         )  # may raise StopIteration
 
         if self._pin_memory:
-            data = _torch_pin_memory(data, self._pin_memory_device)  # type: ignore[arg-type]
+            data = _torch_pin_memory(data)  # type: ignore[arg-type]
 
         # remove ignored columns
 
