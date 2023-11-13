@@ -1,7 +1,7 @@
 defaults: 
   - base_config
   - _self_
-  - dataset: strict_small 
+  - dataset: strict_small_gold
   - objective_curriculum: base_mlm
   - model: roberta_pln_small
   - tokenizer: cbt_8192

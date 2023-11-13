@@ -10,11 +10,12 @@ pos_merge:
   optional_kwargs: { 
     "mask_probability": 0.15,
     "unmask_probability" : 0,
-    "temp_pacing_fn_kwargs": {
+    "gate_pacing_fn_kwargs": {
       "pacing_fn_name": "log", 
       "start_percent": 0.1, 
       "end_percent": 1,
-      "start_temp": 10,
-      "end_temp": 0.1, 
-    }
+      "start_temp": 0.5,
+      "end_temp": 0.95, 
+    },
+    "label_smoothing_temp": 0.025,
   }
