@@ -541,8 +541,12 @@ class CustomTrainer(Trainer):
             f"{lm_model.base_model_prefix}",
             unwrap_model(self.model.base_model),
         )
+
+
+        lm_head_key = "mlm" if "mlm" in self.objective_curriculum.units else "pos_merge"
+
         lm_model.lm_head = unwrap_model(
-            self.objective_curriculum.units["mlm"].task_head
+            self.objective_curriculum.units[lm_head_key].task_head
         )
 
         return lm_model

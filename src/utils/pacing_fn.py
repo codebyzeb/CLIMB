@@ -22,14 +22,14 @@ def get_pacing_fn(
         * total_steps (int): The total number of steps in the training process.
 
         * start_percent (float): The percentage of steps from the total number of steps that
-            have been taken before we begin increasing the data difficulty
+            have been taken before we begin applying the pacing function.
         * end_percent (float): The percentage of steps from the total number of steps that
-            have been taken after which we stop increasing the data difficulty.
+            have been taken after which we stop applying the pacing function.
 
         * start_temp (float): The initial temperature value used for labeling smoothing; should 
-            start as a value > 1 and decrease to belowe 1 as the training progresses. 
-        * end_temp (float):  The final temperature value used for labeling smoothing; should
-            end up being a value < 1.
+            be smaller than the start_temp and smaller than 1 
+        * end_temp (float):  The final temperature value used for labeling smoothing; should be 
+            larger than the start_temp and smaller than 1 
     Returns:
         * (callable): A function that takes in the current step and returns the number of
             data points to use.
@@ -41,8 +41,8 @@ def get_pacing_fn(
     ), f"For the Pacing Fn: start_percent ({start_percent}) must be less than end_percent ({end_percent})"
 
     assert( 
-        start_temp > end_temp
-    ), f"For the Pacing Fn: start_temp ({start_temp}) must be greater than end_temp ({end_temp})"
+        start_temp < end_temp
+    ), f"For the Pacing Fn: start_temp ({start_temp}) must be smaller than end_temp ({end_temp})"
     
     step_start = start_percent * total_steps
     step_end = end_percent * total_steps

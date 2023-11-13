@@ -97,7 +97,18 @@ def compute_trainer_perplexity(
 
     # NOTE: The 'mlm' unit is always in the objective curriculum
     # (this is checked by ObjectiveCurriculum.__init__)
-    loss = trainer.objective_curriculum.units["mlm"].compute_loss(
+    if "mlm" in trainer.objective_curriculum.units:
+        inference_unit = trainer.objective_curriculum.units["mlm"]
+    elif "pos_merge" in trainer.objective_curriculum.units:
+        inference_unit = trainer.objective_curriculum.units["pos_merge"]
+    else:
+        # NOTE: This should never happen because we check for this in the
+        # ObjectiveCurriculum.__init__ method
+        raise ValueError(
+            "The objective curriculum must have either the 'mlm' or 'pos_merge' unit"
+        )
+
+    loss = inference_unit.compute_loss(
         trainer.model,
         {},  # We don't provide a standard batch of data
         override_input_ids=masked_input,

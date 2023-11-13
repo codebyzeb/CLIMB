@@ -86,7 +86,8 @@ class POSLookup(object):
         # compute pair-wise cosine similarity between all subwords, given the lookup matrix 
 
         if similarity_metric == "cosine":
-            normalized_lookup_matrix = self.lookup_matrix / self.lookup_matrix.norm(dim=1)[:, None]
+            lookup_matrix_eps = self.lookup_matrix + 1e-8 # adding small eps to avoid divide by 0
+            normalized_lookup_matrix = lookup_matrix_eps / lookup_matrix_eps.norm(dim=1)[:, None]
             self.similarity_matrix = torch.matmul(normalized_lookup_matrix, normalized_lookup_matrix.T)
         elif similarity_metric == "kl_divergence":
             raise NotImplementedError
