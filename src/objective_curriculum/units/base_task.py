@@ -163,8 +163,6 @@ class BaseTaskUnit(metaclass=ABCMeta):
         # compute the loss
         loss = cross_entropy(logits, labels, **(loss_kwargs or {}))
 
-        print(loss)
-
         return loss
 
     def save(self, output_dir: str) -> None:

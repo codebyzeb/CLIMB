@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
     assert (
-        "HF_READ_TOKEN" in os.environ and "HF_WRITE_TOKEN" in os.environ
-    ), "HF_READ_TOKEN and HF_WRITE_TOKEN need to be set as environment variables"
+        "HF_WRITE_TOKEN" in os.environ
+    ), "HF_WRITE_TOKEN need to be set as environment variables"
 
     missing_keys: set[str] = OmegaConf.missing_keys(cfg)
     if missing_keys:
@@ -55,7 +55,6 @@ def main(cfg: BabyLMConfig):
     dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
-        use_auth_token=os.environ["HF_READ_TOKEN"],
     )  # type: ignore
 
     assert isinstance(dataset, DatasetDict), "Dataset is not a DatasetDict"

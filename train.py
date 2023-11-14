@@ -40,6 +40,10 @@ DIFFICULTY_SCORER_UPDATE = 75
 @record
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
+    assert (
+        "HF_WRITE_TOKEN" in os.environ
+    ), "HF_WRITE_TOKEN need to be set as environment variables"
+
     missing_keys: set[str] = OmegaConf.missing_keys(cfg)
     if missing_keys:
         raise RuntimeError(f"Missing keys in config: \n {missing_keys}")
@@ -217,11 +221,6 @@ def main(cfg: BabyLMConfig):
         metric_key_prefix="eval_best"
     )  # Note that this will also save the best model in the main output directory
     collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
-
-    trainer.save_model(
-        output_dir=os.path.join(training_args.output_dir, "best_model")
-    )
-
 
 if __name__ == "__main__":
     main()
