@@ -60,7 +60,7 @@ class BlimpEvaluator(object):
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
             + (" --dry_run True" if self.dry_run else "")
-            + " --run_aoa"
+            + (" --run_aoa" if not self.dry_run else "")
         )
         subprocess.run(cmd, shell=True)
 
@@ -83,17 +83,18 @@ class BlimpEvaluator(object):
 
         accuracies["blimp_avg"] = sum(accuracies.values()) / len(accuracies)
 
-        with open(
-            os.path.join(
-                self.out_dir,
-                "aoa_prediction",
-                "mean_absolute_deviation_results.json",
-            )
-        ) as f:
-            mean_absolute_deviations = json.load(f)
-            for key in mean_absolute_deviations.keys():
-                if "mad" in key:
-                    accuracies["aoa_" + key] = mean_absolute_deviations[key]
+        if not self.dry_run:
+            with open(
+                os.path.join(
+                    self.out_dir,
+                    "aoa_prediction",
+                    "mean_absolute_deviation_results.json",
+                )
+            ) as f:
+                mean_absolute_deviations = json.load(f)
+                for key in mean_absolute_deviations.keys():
+                    if "mad" in key:
+                        accuracies["aoa_" + key] = mean_absolute_deviations[key]
 
         if self.world_size > 1:
             # Make sure all processes have finished before removing zeroshot directory

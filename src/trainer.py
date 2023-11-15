@@ -21,12 +21,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 # Model Training
-from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback
+from transformers import PreTrainedTokenizerFast, Trainer, TrainerCallback, TrainerControl, TrainerState
 from transformers.modeling_utils import PreTrainedModel, unwrap_model
 from transformers.trainer_utils import (
     HubStrategy,
     IntervalStrategy,
     speed_metrics,
+    PREFIX_CHECKPOINT_DIR,
 )
 from transformers.training_args import ParallelMode, TrainingArguments
 from transformers.utils import (
@@ -47,6 +48,7 @@ from .config import BabyLMConfig
 
 # Model Evaluation
 from .evaluator import BlimpEvaluator, FinetuneEvaluator
+from src.evaluator import collect_results
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -67,7 +69,6 @@ class TaskTrainerCallback(TrainerCallback):
 
     def on_step_end(self, args, state, control, **kwargs) -> None:
         self.objective_curriculum.optimizer_step(state.global_step)
-
 
 class CustomTrainer(Trainer):
     def __init__(
@@ -458,6 +459,8 @@ class CustomTrainer(Trainer):
 
         evaluator_metrics = {}
 
+        # NOTE: Here we have to save out the perplexities to the output directory 
+
         inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
         # Additional behaviour - evaluate on BLIMP
@@ -469,7 +472,7 @@ class CustomTrainer(Trainer):
                 process_index=self.args.process_index,  # world (global) process index
                 world_size=self.args.world_size,
                 dry_run=self.dry_run,
-                keep_predictions=is_best_run,
+                keep_predictions=True, # NOTE: For POS MERGE we need to keep the predictions
             )
             # Get average of blimp metrics
             blimp_metrics = blimp_evaluator()
@@ -485,7 +488,7 @@ class CustomTrainer(Trainer):
                 dry_run=self.dry_run,
                 run_glue=self.eval_glue,
                 run_msgs=self.eval_msgs,
-                keep_predictions=is_best_run,
+                keep_predictions=True, # NOTE: For POS MERGE we need to keep the predictions
             )
             # Get average of glue metrics
             finetune_metrics = finetune_evaluator()
@@ -522,6 +525,8 @@ class CustomTrainer(Trainer):
 
         self._memory_tracker.stop_and_update_metrics(metrics)
 
+        collect_results(inference_model_dir)
+
         return metrics
 
     def _initialize_full_lm_model(self):
@@ -541,7 +546,6 @@ class CustomTrainer(Trainer):
             f"{lm_model.base_model_prefix}",
             unwrap_model(self.model.base_model),
         )
-
 
         lm_head_key = "mlm" if "mlm" in self.objective_curriculum.units else "pos_merge"
 
@@ -579,6 +583,42 @@ class CustomTrainer(Trainer):
             self.tokenizer.save_pretrained(mlm_model_dir)
 
             self.objective_curriculum.save(output_dir=task_heads_dir)
+            
+    def _save_checkpoint(self, model, trial, metrics=None):
+        """ Also save out the prediction files"""
+
+        super()._save_checkpoint(model, trial, metrics=metrics)
+
+        run_dir = self._get_output_dir(trial=trial)
+        output_dir = os.path.join(run_dir, "lm_model")
+        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+        checkpoint_output_dir = os.path.join(run_dir, checkpoint_folder, "lm_model")
+
+        # copy over aoa_predction, finetune, zeroshot and all_predictions.json
+        # from the output_dir to the checkpoint folder
+
+        for prediction_folder in ["aoa_prediction", "finetune", "zeroshot"]:
+
+            src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
+            dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
+
+            if not os.path.exists(src_prediction_folder_path):
+                continue
+
+            shutil.copytree(
+                src_prediction_folder_path,
+                dst_prediction_folder_path
+            )
+
+        # copy over all_predictions.json
+        src_all_predictions_path = os.path.join(output_dir, "all_predictions.json")
+        dst_all_predictions_path = os.path.join(checkpoint_output_dir, "all_predictions.json")
+
+        if os.path.exists(src_all_predictions_path):
+            shutil.copy(
+                src_all_predictions_path,
+                dst_all_predictions_path
+            )
 
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
         super()._load_from_checkpoint(resume_from_checkpoint, model=model)
