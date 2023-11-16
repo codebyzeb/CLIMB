@@ -41,6 +41,7 @@ def compute_trainer_perplexity(
     batch: Dict[str, torch.Tensor],
     tokenizer: PreTrainedTokenizerFast,
     trainer: CustomTrainer,
+    output_per_token_loss = False,
 ) -> List[float]:
     """
 
@@ -53,6 +54,8 @@ def compute_trainer_perplexity(
         * tokenizer: a tokenizer object that was used for tokenizing the input ids, we use this
             only to determine the mask token id.
         * trainer: a trainer object that was used for training the model
+        * output_per_token_loss: if True, the function will return a tuple of 
+            (perplexity, token_loss)
     Returns:
         * perplexity (float): The perplexity of the n-gram
 
@@ -142,4 +145,7 @@ def compute_trainer_perplexity(
     # converting batch perplexity to a list of floats
     batch_perplexity = batch_perplexity.cpu().tolist()
 
-    return batch_perplexity
+    if output_per_token_loss:
+        return batch_perplexity, loss.cpu().tolist()
+    else:
+        return batch_perplexity

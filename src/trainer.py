@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import time
+import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -382,75 +383,161 @@ class CustomTrainer(Trainer):
 
         metrics = {}
 
-        # Additional behavior - evaluate perplexity
-        # Get 10_000 samples from the eval dataset
-        eval_subset = self.eval_dataset.select(  # type: ignore
-            range(
-                self.args.process_index,  # local process rank
-                self.eval_dataset.num_rows,  # type: ignore
-                self.eval_dataset.num_rows // ((100 if self.dry_run else 10_000) // self.args.world_size),  # type: ignore
-            )
-        )
-        logging.info("Evaluating perplexity...")
-        logging.info(f" ** Number of samples: {eval_subset.num_rows}")
-        pad_idx = self.tokenizer.pad_token_id
-        mask_idx = self.tokenizer.mask_token_id
-
-        assert pad_idx is not None and mask_idx is not None
-
         if self.eval_perplexity:
+
+            # Additional behavior - evaluate perplexity
+            # Get 10_000 samples from the eval dataset
+            eval_subset = self.eval_dataset.select(  # type: ignore
+                range(
+                    self.args.process_index,  # local process rank
+                    self.eval_dataset.num_rows,  # type: ignore
+                    self.eval_dataset.num_rows // ((100 if self.dry_run else 10_000) // self.args.world_size),  # type: ignore
+                )
+            )
+
+            logging.info("Evaluating perplexity...")
+            logging.info(f" ** Number of samples: {eval_subset.num_rows}")
+            pad_idx = self.tokenizer.pad_token_id
+            mask_idx = self.tokenizer.mask_token_id
+
+            assert pad_idx is not None and mask_idx is not None
+
             perplexities = []
+            per_token_losses = []
+
             with torch.no_grad():
 
                 eval_subset = prepare_dataset_for_ppl_inference(
                     self, eval_subset
                 )
 
+                eval_batch_size = 4
+
                 inference_dataloader = DataLoader(
                     eval_subset,  # type: ignore
-                    batch_size=4,
+                    batch_size=eval_batch_size,
                     shuffle=False,
                     collate_fn=base_collate_fn,
                     pin_memory=True,
                 )
 
                 for batch in tqdm(inference_dataloader):
-                    batch_perplexity = compute_trainer_perplexity(
-                        batch, self.tokenizer, self
+
+                    batch_perplexity, per_token_loss = compute_trainer_perplexity(
+                        batch, self.tokenizer, self, output_per_token_loss=True
                     )
 
                     perplexities.extend(batch_perplexity)
+                    per_token_losses.extend(per_token_loss)
 
+            # NOTE: a list of sample-level perplexities
             tensor_perplexities = torch.tensor(
                 perplexities, device=self.args.device
             )
-            perplexity_mean = torch.mean(tensor_perplexities)
-            perplexity_std = torch.std(tensor_perplexities)
 
+            # NOTE: a list of token-level losses stored as a list (list of list)
+            tensor_per_token_losses = torch.tensor(
+                per_token_losses, device=self.args.device
+            )
+
+            # NOTE: If there are multiple processes we need to group gather the perplexities and 
+            # token_level_losses
             if self.args.world_size > 1:
                 # setup barrier for all processes
                 dist.barrier()
 
-                # Reduce perplexity across all processes
-                gathered_perplexity_mean = [
-                    torch.zeros_like(perplexity_mean)
-                    for _ in range(self.args.world_size)
-                ]
-                gathered_perplexity_std = [
-                    torch.zeros_like(perplexity_std)
+                gathered_perplexities = [
+                    torch.zeros_like(tensor_perplexities)
                     for _ in range(self.args.world_size)
                 ]
 
-                dist.all_gather(gathered_perplexity_mean, perplexity_mean)
-                dist.all_gather(gathered_perplexity_std, perplexity_std)
+                gathered_per_token_losses = [
+                    torch.zeros_like(tensor_per_token_losses)
+                    for _ in range(self.args.world_size)
+                ]
 
-            # if main process
-            metrics[f"{metric_key_prefix}_perplexity_mean"] = torch.mean(
-                torch.tensor(perplexities)
+                dist.all_gather(gathered_perplexities, tensor_perplexities)
+                dist.all_gather(gathered_per_token_losses, tensor_per_token_losses)
+
+                # combine list of tensors into a single tensor
+
+                gathered_perplexities = torch.cat(gathered_perplexities)
+                gathered_per_token_losses = torch.cat(gathered_per_token_losses)
+            else: 
+                gathered_perplexities = tensor_perplexities
+                gathered_per_token_losses = tensor_per_token_losses
+
+            gathered_perplexity_mean = torch.mean(
+                gathered_perplexities
             ).item()
-            metrics[f"{metric_key_prefix}_perplexity_std"] = torch.std(
-                torch.tensor(perplexities)
-            ).item()
+            gathered_perplexity_std = torch.mean(
+                gathered_perplexities
+            ).item() 
+
+            metrics[f"{metric_key_prefix}_perplexity_mean"] = gathered_perplexity_mean
+            metrics[f"{metric_key_prefix}_perplexity_std"] = gathered_perplexity_std
+
+
+            # On the main process we need to save out the perplexities to the output directory
+            if self.is_world_process_zero():
+
+                # create an output perplexity.json file 
+                output_dir = os.path.join(self.args.output_dir, "lm_model")
+                ppl_dir = os.path.join(output_dir, "perplexity")
+                os.makedirs(ppl_dir, exist_ok=True)
+
+                perplexity_output_path = os.path.join(
+                    ppl_dir, "predictions.json"
+                )
+
+                perplexity_dict = {
+                    "task": "perplexity",
+                    "predictions": [],
+                }
+
+                for _process_idx in range(self.args.world_size):
+                    _curr_eval_subset = self.eval_dataset.select(  # type: ignore
+                        range(
+                            _process_idx,  # local process rank
+                            self.eval_dataset.num_rows,  # type: ignore
+                            self.eval_dataset.num_rows // ((100 if self.dry_run else 10_000) // self.args.world_size),  # type: ignore
+                        )
+                    )
+
+                    _curr_eval_subset = prepare_dataset_for_ppl_inference(
+                        self, _curr_eval_subset
+                    )
+
+                    _curr_eval_subset_dataloader = DataLoader(
+                        _curr_eval_subset,  # type: ignore
+                        batch_size=1,
+                        shuffle=False,
+                        collate_fn=base_collate_fn,
+                    )
+
+                    for idx, batch in enumerate(_curr_eval_subset_dataloader):
+
+                        _input_ids = batch["input_ids"].squeeze(0).tolist()
+                        _perplexity = gathered_perplexities[
+                            _process_idx * len(_curr_eval_subset_dataloader) + idx
+                        ].item()
+                        _per_token_loss = gathered_per_token_losses[
+                            _process_idx * len(_curr_eval_subset_dataloader) + idx
+                        ].tolist()
+
+                        sample_dict = {
+                            "id": "perplexity_" + str(_process_idx * len(_curr_eval_subset_dataloader) + idx),
+                            "input_ids": _input_ids,
+                            "perplexity": _perplexity, 
+                            "per_token_loss": _per_token_loss,
+                        }
+
+                        perplexity_dict["predictions"].append(sample_dict)
+
+                # save out perplexity_dict to perplexity_output_path
+                with open(perplexity_output_path, "w") as f:
+                    json.dump(perplexity_dict, f) 
+
 
         self.save_model(self.args.output_dir, _internal_call=True)
         # if world size > 1, then we need to synchronize the model across all processes
@@ -597,7 +684,7 @@ class CustomTrainer(Trainer):
         # copy over aoa_predction, finetune, zeroshot and all_predictions.json
         # from the output_dir to the checkpoint folder
 
-        for prediction_folder in ["aoa_prediction", "finetune", "zeroshot"]:
+        for prediction_folder in ["aoa_prediction", "finetune", "zeroshot", "perplexity"]:
 
             src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
             dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
