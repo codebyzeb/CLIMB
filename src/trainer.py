@@ -48,8 +48,9 @@ from src.utils.inference import (
 from .config import BabyLMConfig
 
 # Model Evaluation
-from .evaluator import BlimpEvaluator, FinetuneEvaluator
-from src.evaluator import collect_results
+from .evaluators.blimp_evaluator import BlimpEvaluator
+from .evaluators.finetune_evaluator import FinetuneEvaluator, collect_results
+from .evaluators.blimp_bias_evaluator import BlimpBiasEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -580,6 +581,20 @@ class CustomTrainer(Trainer):
             # Get average of glue metrics
             finetune_metrics = finetune_evaluator()
             evaluator_metrics.update(finetune_metrics)  # type: ignore
+
+         # Save results to an all_predictions.json file
+        collect_results(os.path.join(self.args.output_dir, "lm_model"))
+
+        if self.eval_blimp:
+            logging.info('Evaluating bias on BLIMP predictions...')
+            blimp_prediction_evaluator = BlimpBiasEvaluator(
+                os.path.join(inference_model_dir, "all_predictions.json"),
+                tokenizer=self.tokenizer,
+                pos_lookup=self.pos_lookup,
+                dry_run=self.dry_run,
+            )
+            blimp_bias_metrics = blimp_prediction_evaluator()
+            evaluator_metrics.update(blimp_bias_metrics)  # type: ignore
 
         for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):

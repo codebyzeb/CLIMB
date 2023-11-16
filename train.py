@@ -17,7 +17,6 @@ from transformers.training_args import TrainingArguments
 # wandb for logging metrics
 import wandb
 from src.config import BabyLMConfig
-from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
@@ -220,7 +219,6 @@ def main(cfg: BabyLMConfig):
     trainer.evaluate(
         metric_key_prefix="eval_best"
     )  # Note that this will also save the best model in the main output directory
-    collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
 
 if __name__ == "__main__":
     main()
