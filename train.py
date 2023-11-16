@@ -64,7 +64,6 @@ def main(cfg: BabyLMConfig):
     # Loading dataset
     logger.info("Loading dataset")
 
-    assert("original" not in cfg.dataset.subconfig), "Cannot use original dataset for training; must use the POS tagged version"
     dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
