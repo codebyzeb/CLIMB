@@ -12,7 +12,7 @@ from src.utils.data import POSLookup
 
 logger = logging.getLogger(__name__)
 
-BLIMP_DATA_DIR = '../lib/evaluation-pipeline/filter-data/blimp_filtered'
+BLIMP_DATA_DIR = 'lib/evaluation-pipeline/filter-data/blimp_filtered'
 
 def find_replaced_substring(string_a : list, string_b : list) -> (list, list):
     """ Returns the substring in string_a that is not in string_b and vice versa """
@@ -62,7 +62,7 @@ class BlimpBiasEvaluator(object):
     def get_prediction_data(self):
         """ Compares the predictions to the ground truth and returns a dictionary of the results and computed metrics """
 
-        tasks = ['argument_structure'] if self.dry_run else self.blimp_gold.keys()
+        tasks = ['anaphor_agreement'] if self.dry_run else self.blimp_gold.keys()
 
         all_predictions = {'correct' : [],
                     'sentence_good' : [],
@@ -251,8 +251,12 @@ class BlimpBiasEvaluator(object):
         # For some tasks, there's not enough of a distribution of frequencies to get a meaningful result,
         # so we only count those tasks where there are both low and high frequency examples
         total = sum([1 for task in split_data if split_data[task]['low_frequency'] != 0 and split_data[task]['high_frequency'] != 0])
-        percentage_increasing = sum([1 for task in split_data if split_data[task]['low_frequency'] < split_data[task]['high_frequency']]) / total
-        average_increase = sum([split_data[task]['high_frequency'] - split_data[task]['low_frequency'] for task in split_data if split_data[task]['low_frequency'] != 0 and split_data[task]['high_frequency'] != 0]) / total
+        if total == 0:
+            percentage_increasing = 0
+            average_increase = 0
+        else:
+            percentage_increasing = sum([1 for task in split_data if split_data[task]['low_frequency'] < split_data[task]['high_frequency']]) / total
+            average_increase = sum([split_data[task]['high_frequency'] - split_data[task]['low_frequency'] for task in split_data if split_data[task]['low_frequency'] != 0 and split_data[task]['high_frequency'] != 0]) / total
         total_increase = split_all_overall['high_frequency'] - split_all_overall['low_frequency']
         total_increase_task_splits = split_all_task_splits['high_frequency'] - split_all_task_splits['low_frequency']
 

@@ -211,8 +211,8 @@ def main(cfg: BabyLMConfig):
     # Always evaluate the best model at the end of training, on every metric.
     # Note that passing load_best_model_at_end=True to the trainer will load the best model at
     # the end of training, so we don't need to do it here
-    trainer.eval_glue = True
-    trainer.eval_msgs = True
+    #trainer.eval_msgs = True
+    #trainer.eval_glue = True
     trainer.eval_blimp = True
     trainer.eval_perplexity = True
     trainer.evaluate(

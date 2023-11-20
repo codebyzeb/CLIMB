@@ -59,7 +59,7 @@ class BlimpEvaluator(object):
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
             + (" --dry_run True" if self.dry_run else "")
-            + " --run_aoa"
+            #+ " --run_aoa"
         )
         subprocess.run(cmd, shell=True)
 

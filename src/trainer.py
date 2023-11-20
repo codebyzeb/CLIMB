@@ -590,9 +590,9 @@ class CustomTrainer(Trainer):
             evaluator_metrics.update(finetune_metrics)  # type: ignore
 
          # Save results to an all_predictions.json file
-        collect_results(os.path.join(self.args.output_dir, "lm_model"))
+        collect_results(inference_model_dir)
 
-        if self.eval_blimp:
+        if self.eval_blimp and self.is_world_process_zero():
             logging.info('Evaluating bias on BLIMP predictions...')
             blimp_prediction_evaluator = BlimpBiasEvaluator(
                 os.path.join(inference_model_dir, "all_predictions.json"),
@@ -633,8 +633,6 @@ class CustomTrainer(Trainer):
         )
 
         self._memory_tracker.stop_and_update_metrics(metrics)
-
-        collect_results(inference_model_dir)
 
         return metrics
 
