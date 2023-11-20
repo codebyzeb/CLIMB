@@ -51,6 +51,7 @@ from .config import BabyLMConfig
 from .evaluators.blimp_evaluator import BlimpEvaluator
 from .evaluators.finetune_evaluator import FinetuneEvaluator, collect_results
 from .evaluators.blimp_bias_evaluator import BlimpBiasEvaluator
+from .evaluators.perplexity_bias_evaluator import PerplexityBiasEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -478,6 +479,7 @@ class CustomTrainer(Trainer):
             metrics[f"{metric_key_prefix}_perplexity_mean"] = gathered_perplexity_mean
             metrics[f"{metric_key_prefix}_perplexity_std"] = gathered_perplexity_std
 
+            evaluator_metrics = {}
 
             # On the main process we need to save out the perplexities to the output directory
             if self.is_world_process_zero():
@@ -539,15 +541,20 @@ class CustomTrainer(Trainer):
                 with open(perplexity_output_path, "w") as f:
                     json.dump(perplexity_dict, f) 
 
+                # Run perplexity bias evaluation
+                logging.info("Evaluating perplexity bias...")
+                perplexity_bias_evaluator = PerplexityBiasEvaluator(
+                    perplexity_output_path,
+                    tokenizer=self.tokenizer,
+                    pos_lookup=self.pos_lookup,
+                )
+                perplexity_bias_metrics = perplexity_bias_evaluator()
+                evaluator_metrics.update(perplexity_bias_metrics)  # type: ignore
 
         self.save_model(self.args.output_dir, _internal_call=True)
         # if world size > 1, then we need to synchronize the model across all processes
         if self.args.world_size > 1:
             dist.barrier()  # Ensure all processes have access to the same model
-
-        evaluator_metrics = {}
-
-        # NOTE: Here we have to save out the perplexities to the output directory 
 
         inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 

@@ -45,8 +45,7 @@ class BlimpBiasEvaluator(object):
         """
 
         self.dry_run = dry_run
-        with open(all_predictions_file, 'r') as f:
-            self.predictions = load_dataset('json', data_files=all_predictions_file, split='train')
+        self.predictions = load_dataset('json', data_files=all_predictions_file, split='train')
 
         self.token_counts = pos_lookup.lookup_matrix.sum(axis=1)
         self.tokenizer = tokenizer
