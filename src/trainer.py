@@ -696,36 +696,37 @@ class CustomTrainer(Trainer):
 
         super()._save_checkpoint(model, trial, metrics=metrics)
 
-        run_dir = self._get_output_dir(trial=trial)
-        output_dir = os.path.join(run_dir, "lm_model")
-        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-        checkpoint_output_dir = os.path.join(run_dir, checkpoint_folder, "lm_model")
+        if self.is_world_process_zero():
+            run_dir = self._get_output_dir(trial=trial)
+            output_dir = os.path.join(run_dir, "lm_model")
+            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+            checkpoint_output_dir = os.path.join(run_dir, checkpoint_folder, "lm_model")
 
-        # copy over aoa_predction, finetune, zeroshot and all_predictions.json
-        # from the output_dir to the checkpoint folder
+            # copy over aoa_predction, finetune, zeroshot and all_predictions.json
+            # from the output_dir to the checkpoint folder
 
-        for prediction_folder in ["aoa_prediction", "finetune", "zeroshot", "perplexity"]:
+            for prediction_folder in ["aoa_prediction", "finetune", "zeroshot", "perplexity"]:
 
-            src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
-            dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
+                src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
+                dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
 
-            if not os.path.exists(src_prediction_folder_path):
-                continue
+                if not os.path.exists(src_prediction_folder_path):
+                    continue
 
-            shutil.copytree(
-                src_prediction_folder_path,
-                dst_prediction_folder_path
-            )
+                shutil.copytree(
+                    src_prediction_folder_path,
+                    dst_prediction_folder_path
+                )
 
-        # copy over all_predictions.json
-        src_all_predictions_path = os.path.join(output_dir, "all_predictions.json")
-        dst_all_predictions_path = os.path.join(checkpoint_output_dir, "all_predictions.json")
+            # copy over all_predictions.json
+            src_all_predictions_path = os.path.join(output_dir, "all_predictions.json")
+            dst_all_predictions_path = os.path.join(checkpoint_output_dir, "all_predictions.json")
 
-        if os.path.exists(src_all_predictions_path):
-            shutil.copy(
-                src_all_predictions_path,
-                dst_all_predictions_path
-            )
+            if os.path.exists(src_all_predictions_path):
+                shutil.copy(
+                    src_all_predictions_path,
+                    dst_all_predictions_path
+                )
 
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
         super()._load_from_checkpoint(resume_from_checkpoint, model=model)
