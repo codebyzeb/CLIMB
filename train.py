@@ -17,7 +17,6 @@ from transformers.training_args import TrainingArguments
 # wandb for logging metrics
 import wandb
 from src.config import BabyLMConfig
-from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
@@ -65,7 +64,6 @@ def main(cfg: BabyLMConfig):
     # Loading dataset
     logger.info("Loading dataset")
 
-    assert("original" not in cfg.dataset.subconfig), "Cannot use original dataset for training; must use the POS tagged version"
     dataset: DatasetDict = load_dataset(
         cfg.dataset.name,
         cfg.dataset.subconfig,
@@ -213,14 +211,13 @@ def main(cfg: BabyLMConfig):
     # Always evaluate the best model at the end of training, on every metric.
     # Note that passing load_best_model_at_end=True to the trainer will load the best model at
     # the end of training, so we don't need to do it here
-    trainer.eval_glue = True
-    trainer.eval_msgs = True
+    #trainer.eval_msgs = True
+    #trainer.eval_glue = True
     trainer.eval_blimp = True
     trainer.eval_perplexity = True
     trainer.evaluate(
         metric_key_prefix="eval_best"
     )  # Note that this will also save the best model in the main output directory
-    collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
 
 if __name__ == "__main__":
     main()

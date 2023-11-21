@@ -240,38 +240,32 @@ class DatasetPreprocessor(object):
                 return_offsets_mapping=True,
             )
 
-            # Original dataset doesn't have pos tags
-            if "original" in self.dataset_subconfig:
-                pos_tags = [POS_TAG_MAP["X"]] * len(
-                    tokenized_inputs["input_ids"]  # type: ignore
+            subwords = [text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
+            tag_pairs = [
+                tag_pair.split("__<label>__")
+                for tag_pair in tagged_text.strip().split(" ")
+                if tag_pair != ""
+            ]
+            # Iterate through subwords and assign POS tags, hopefully they should match up, since
+            # the subwords in example_tagged_text were extracted by the tokenizer in the first place
+            pos_tags = []
+            i = 0
+            for subword in subwords:
+                # This indicates that the subword is a special token
+                if subword == "" or subword == "\n":
+                    pos_tags.append(POS_TAG_MAP["X"])
+                    continue
+                # Check if we're at the start of the next word
+                if i + 1 < len(tag_pairs) and tag_pairs[i + 1][
+                    0
+                ].startswith(subword):
+                    i += 1
+                # Keep using the POS tag of the current word
+                pos_tags.append(
+                    POS_TAG_MAP[tag_pairs[i][1]]
+                    if tag_pairs[i][1] in POS_TAG_MAP
+                    else POS_TAG_MAP["X"]
                 )
-            else:
-                subwords = [text[offset[0] : offset[1]] for offset in tokenized_inputs["offset_mapping"]]  # type: ignore
-                tag_pairs = [
-                    tag_pair.split("__<label>__")
-                    for tag_pair in tagged_text.strip().split(" ")
-                    if tag_pair != ""
-                ]
-                # Iterate through subwords and assign POS tags, hopefully they should match up, since
-                # the subwords in example_tagged_text were extracted by the tokenizer in the first place
-                pos_tags = []
-                i = 0
-                for subword in subwords:
-                    # This indicates that the subword is a special token
-                    if subword == "" or subword == "\n":
-                        pos_tags.append(POS_TAG_MAP["X"])
-                        continue
-                    # Check if we're at the start of the next word
-                    if i + 1 < len(tag_pairs) and tag_pairs[i + 1][
-                        0
-                    ].startswith(subword):
-                        i += 1
-                    # Keep using the POS tag of the current word
-                    pos_tags.append(
-                        POS_TAG_MAP[tag_pairs[i][1]]
-                        if tag_pairs[i][1] in POS_TAG_MAP
-                        else POS_TAG_MAP["X"]
-                    )
 
             if self.join_sentences:
                 full_tokenized_inputs["input_ids"].extend(

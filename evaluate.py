@@ -16,11 +16,10 @@ from transformers.trainer_callback import TrainerState
 # wandb for logging metrics
 import wandb
 from src.config import BabyLMConfig
-from src.evaluator import collect_results
 from src.models import load_base_model
 from src.tokenizer import load_tokenizer
 from src.trainer import CustomTrainer
-from src.utils.data import DatasetPreprocessor
+from src.utils.data import DatasetPreprocessor, POSLookup
 from src.utils.setup import set_seed
 
 # type-checks dynamic config file
@@ -33,17 +32,9 @@ logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: BabyLMConfig):
-    assert (
-        "HF_WRITE_TOKEN" in os.environ
-    ), "HF_WRITE_TOKEN need to be set as environment variables"
-
     missing_keys: set[str] = OmegaConf.missing_keys(cfg)
     if missing_keys:
         raise RuntimeError(f"Missing keys in config: \n {missing_keys}")
-
-    assert (cfg.experiment.offline_run) or (
-        cfg.experiment.resume_run_id is not None
-    ), "Resume run ID must be set for evalutation if not running offline"
 
     logger.info(f"Config: {OmegaConf.to_yaml(cfg)}")
 
@@ -72,6 +63,16 @@ def main(cfg: BabyLMConfig):
     # Preprocess data
     logger.info("Preprocessing data")
     data_preprocessor = DatasetPreprocessor(cfg, tokenizer)
+
+    train_dataset = dataset["train"].map(
+        data_preprocessor,
+        batched=True,
+        num_proc=64,
+        remove_columns=dataset["train"].column_names,
+    )
+
+    logger.info("Initializing POS lookup table")
+    pos_lookup = POSLookup(train_dataset, tokenizer)
 
     eval_dataset = dataset["validation"].map(
         data_preprocessor,
@@ -163,6 +164,7 @@ def main(cfg: BabyLMConfig):
         train_dataset=None,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
+        pos_lookup=pos_lookup,
     )
 
     # First load from checkpoint, presumably the last checkpoint,
@@ -177,7 +179,6 @@ def main(cfg: BabyLMConfig):
     trainer.eval_msgs = True
     trainer.eval_perplexity = True
     trainer.evaluate(metric_key_prefix="eval_best") # Note that this will save the best model into the main output dir
-    collect_results(os.path.join(trainer.args.output_dir, "lm_model"))
 
 if __name__ == "__main__":
     main()

@@ -48,8 +48,10 @@ from src.utils.inference import (
 from .config import BabyLMConfig
 
 # Model Evaluation
-from .evaluator import BlimpEvaluator, FinetuneEvaluator
-from src.evaluator import collect_results
+from .evaluators.blimp_evaluator import BlimpEvaluator
+from .evaluators.finetune_evaluator import FinetuneEvaluator, collect_results
+from .evaluators.blimp_bias_evaluator import BlimpBiasEvaluator
+from .evaluators.perplexity_bias_evaluator import PerplexityBiasEvaluator
 
 # Objective Curriculum
 from .objective_curriculum import ObjectiveCurriculum
@@ -477,6 +479,7 @@ class CustomTrainer(Trainer):
             metrics[f"{metric_key_prefix}_perplexity_mean"] = gathered_perplexity_mean
             metrics[f"{metric_key_prefix}_perplexity_std"] = gathered_perplexity_std
 
+            evaluator_metrics = {}
 
             # On the main process we need to save out the perplexities to the output directory
             if self.is_world_process_zero():
@@ -538,15 +541,20 @@ class CustomTrainer(Trainer):
                 with open(perplexity_output_path, "w") as f:
                     json.dump(perplexity_dict, f) 
 
+                # Run perplexity bias evaluation
+                logging.info("Evaluating perplexity bias...")
+                perplexity_bias_evaluator = PerplexityBiasEvaluator(
+                    perplexity_output_path,
+                    tokenizer=self.tokenizer,
+                    pos_lookup=self.pos_lookup,
+                )
+                perplexity_bias_metrics = perplexity_bias_evaluator()
+                evaluator_metrics.update(perplexity_bias_metrics)  # type: ignore
 
         self.save_model(self.args.output_dir, _internal_call=True)
         # if world size > 1, then we need to synchronize the model across all processes
         if self.args.world_size > 1:
             dist.barrier()  # Ensure all processes have access to the same model
-
-        evaluator_metrics = {}
-
-        # NOTE: Here we have to save out the perplexities to the output directory 
 
         inference_model_dir = os.path.join(self.args.output_dir, "lm_model")
 
@@ -581,6 +589,20 @@ class CustomTrainer(Trainer):
             finetune_metrics = finetune_evaluator()
             evaluator_metrics.update(finetune_metrics)  # type: ignore
 
+         # Save results to an all_predictions.json file
+        collect_results(inference_model_dir)
+
+        if self.eval_blimp and self.is_world_process_zero():
+            logging.info('Evaluating bias on BLIMP predictions...')
+            blimp_prediction_evaluator = BlimpBiasEvaluator(
+                os.path.join(inference_model_dir, "all_predictions.json"),
+                tokenizer=self.tokenizer,
+                pos_lookup=self.pos_lookup,
+                dry_run=self.dry_run,
+            )
+            blimp_bias_metrics = blimp_prediction_evaluator()
+            evaluator_metrics.update(blimp_bias_metrics)  # type: ignore
+
         for key in list(evaluator_metrics.keys()):
             if not key.startswith(f"{metric_key_prefix}_"):
                 evaluator_metrics[
@@ -611,8 +633,6 @@ class CustomTrainer(Trainer):
         )
 
         self._memory_tracker.stop_and_update_metrics(metrics)
-
-        collect_results(inference_model_dir)
 
         return metrics
 
@@ -676,36 +696,37 @@ class CustomTrainer(Trainer):
 
         super()._save_checkpoint(model, trial, metrics=metrics)
 
-        run_dir = self._get_output_dir(trial=trial)
-        output_dir = os.path.join(run_dir, "lm_model")
-        checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
-        checkpoint_output_dir = os.path.join(run_dir, checkpoint_folder, "lm_model")
+        if self.is_world_process_zero():
+            run_dir = self._get_output_dir(trial=trial)
+            output_dir = os.path.join(run_dir, "lm_model")
+            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
+            checkpoint_output_dir = os.path.join(run_dir, checkpoint_folder, "lm_model")
 
-        # copy over aoa_predction, finetune, zeroshot and all_predictions.json
-        # from the output_dir to the checkpoint folder
+            # copy over aoa_predction, finetune, zeroshot and all_predictions.json
+            # from the output_dir to the checkpoint folder
 
-        for prediction_folder in ["aoa_prediction", "finetune", "zeroshot", "perplexity"]:
+            for prediction_folder in ["aoa_prediction", "finetune", "zeroshot", "perplexity"]:
 
-            src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
-            dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
+                src_prediction_folder_path = os.path.join(output_dir, prediction_folder)
+                dst_prediction_folder_path = os.path.join(checkpoint_output_dir, prediction_folder)
 
-            if not os.path.exists(src_prediction_folder_path):
-                continue
+                if not os.path.exists(src_prediction_folder_path):
+                    continue
 
-            shutil.copytree(
-                src_prediction_folder_path,
-                dst_prediction_folder_path
-            )
+                shutil.copytree(
+                    src_prediction_folder_path,
+                    dst_prediction_folder_path
+                )
 
-        # copy over all_predictions.json
-        src_all_predictions_path = os.path.join(output_dir, "all_predictions.json")
-        dst_all_predictions_path = os.path.join(checkpoint_output_dir, "all_predictions.json")
+            # copy over all_predictions.json
+            src_all_predictions_path = os.path.join(output_dir, "all_predictions.json")
+            dst_all_predictions_path = os.path.join(checkpoint_output_dir, "all_predictions.json")
 
-        if os.path.exists(src_all_predictions_path):
-            shutil.copy(
-                src_all_predictions_path,
-                dst_all_predictions_path
-            )
+            if os.path.exists(src_all_predictions_path):
+                shutil.copy(
+                    src_all_predictions_path,
+                    dst_all_predictions_path
+                )
 
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
         super()._load_from_checkpoint(resume_from_checkpoint, model=model)
