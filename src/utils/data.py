@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Union
 
 import torch
+import torch.functional as F 
 from torch.utils.data.sampler import Sampler
 from datasets import Dataset
 from transformers import PreTrainedTokenizerFast
@@ -76,7 +77,7 @@ class POSLookup(object):
                 The valid similarity metrics that we implement are: 
                     * Cosine 
                     * KL divergence 
-                    * Wasserstein Distance (Earth Mover's Distance)
+                    * Jensen-Shannon Divergence (symmetric KL divergence)
         """
         self.dataset = dataset
         self.tokenizer = tokenizer
@@ -90,10 +91,27 @@ class POSLookup(object):
             normalized_lookup_matrix = lookup_matrix_eps / lookup_matrix_eps.norm(dim=1)[:, None]
             self.similarity_matrix = torch.matmul(normalized_lookup_matrix, normalized_lookup_matrix.T)
         elif similarity_metric == "kl_divergence":
-            raise NotImplementedError
-        elif similarity_metric == "wasserstein_distance":
-            raise NotImplementedError
-        
+            # compute the KL divergence between all subwords, given the lookup matrix
+            num_tokens = self.lookup_matrix.size(0)
+            self.similarity_matrix = torch.zeros((num_tokens, num_tokens))
+
+            for i in range(num_tokens):
+                for j in range(num_tokens):
+                    if i != j:
+                        kl_div = F.kl_div(self.lookup_matrix[i], self.lookup_matrix[j], reduction='sum')
+                        self.similarity_matrix[i, j] = kl_div
+            
+        elif similarity_metric == "js_divergence":
+            # Compute the Jensen-Shannon divergence between all subwords, given the lookup matrix
+            num_tokens = self.lookup_matrix.size(0)
+            self.similarity_matrix = torch.zeros((num_tokens, num_tokens))
+            for i in range(num_tokens):
+                for j in range(num_tokens):
+                    if i != j:
+                        js_div = (F.kl_div(self.lookup_matrix[i], self.lookup_matrix[j], reduction='sum') + 
+                                  F.kl_div(self.lookup_matrix[j], self.lookup_matrix[i], reduction='sum')) / 2
+                        self.imilarity_matrix[i, j] = js_div
+
 
     @staticmethod
     def combine_defaultdicts(dicts_list: List[Dict[str, List[Tuple[int, float]]]]):
