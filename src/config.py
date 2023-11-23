@@ -120,42 +120,12 @@ class PacingFunctionParams(Mapping[str, Any]):
     max_difficulty: Optional[float] = 1.0
 
 
-# Difficulty Scorer Parameters
-
-DifficultyScorerKwargsType = Optional[Dict[str, Any]]
-
-
+# Paramters for POS lookup class 
 @dataclass
-class DataCurriculumParams(DictConfig):
-    # data-driven curriculum learning parameters
-
-    # the column of the data to sort by (aka n_gram perplexity, sentence length, etc.)
-    difficulty_scorer_name: str
-
-    difficulty_scorer_kwargs: DifficultyScorerKwargsType
-
-    # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
-    pacing_fn_name: str
-
-    pacing_fn_kwargs: PacingFunctionParams
-
-
-## Vocabulary curriculum parameters ##
-@dataclass
-class VocabularyCurriculumParams(DictConfig):
-    # vocabulary curriculum learning parameters
-
-    # the curriculum used to determine which tokens to map to <unk> (aka token_ids, part of speech etc.)
-    vocabulary_curriculum_name: str
-
-    # one of ['linear', 'quad', 'root', 'step', 'exp', 'log'] or None, meaning no pacing
-    pacing_fn_name: str
-
-    pacing_fn_kwargs: PacingFunctionParams
-
+class POSLookupParams(DictConfig):
+    similarity_metric: str
 
 ### Container for entire config ###
-
 
 @dataclass
 class BabyLMConfig(DictConfig):
@@ -166,5 +136,4 @@ class BabyLMConfig(DictConfig):
     model: ModelParams
     trainer: TrainerParams
     objective_curriculum: ObjectiveCurriculumParams
-    data_curriculum: Optional[DataCurriculumParams] = None
-    vocabulary_curriculum: Optional[VocabularyCurriculumParams] = None
+    pos_lookup: POSLookupParams
