@@ -93,7 +93,7 @@ def main(cfg: BabyLMConfig):
     )
 
     logger.info("Initializing POS lookup table")
-    pos_lookup = POSLookup(train_dataset, tokenizer)
+    pos_lookup = POSLookup(train_dataset, tokenizer, similarity_metric=cfg.pos_lookup.similarity_metric)
 
     if cfg.experiment.dry_run:
         logger.info(

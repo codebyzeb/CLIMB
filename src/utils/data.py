@@ -8,7 +8,6 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Union
 
 import torch
-import torch.functional as F 
 from torch.utils.data.sampler import Sampler
 from datasets import Dataset
 from transformers import PreTrainedTokenizerFast
@@ -16,6 +15,8 @@ from transformers import PreTrainedTokenizerFast
 from src.config import BabyLMConfig
 
 from multiprocessing import Pool, cpu_count
+
+from tqdm import tqdm
 
 POS_TAG_MAP = {
     "NOUN": 0,
@@ -81,37 +82,41 @@ class POSLookup(object):
         """
         self.dataset = dataset
         self.tokenizer = tokenizer
+        self.similarity_metric = similarity_metric
 
         self.lookup_matrix = self.build_lookup()
 
         # compute pair-wise cosine similarity between all subwords, given the lookup matrix 
+        lookup_matrix_eps = self.lookup_matrix + 1e-8 # adding small eps to avoid divide by 0
+        normalized_lookup_matrix = lookup_matrix_eps / lookup_matrix_eps.norm(dim=1)[:, None]
 
         if similarity_metric == "cosine":
-            lookup_matrix_eps = self.lookup_matrix + 1e-8 # adding small eps to avoid divide by 0
-            normalized_lookup_matrix = lookup_matrix_eps / lookup_matrix_eps.norm(dim=1)[:, None]
             self.similarity_matrix = torch.matmul(normalized_lookup_matrix, normalized_lookup_matrix.T)
-        elif similarity_metric == "kl_divergence":
+        elif similarity_metric == "kl_divergence" or similarity_metric == "js_divergence":
             # compute the KL divergence between all subwords, given the lookup matrix
+
+            def compute_row_kl(idx): 
+                target_dist = normalized_lookup_matrix[idx]
+                diff = target_dist * (torch.log(target_dist) - torch.log(normalized_lookup_matrix))
+                return diff.sum(dim=1)
+
+            def compute_row_js(idx): 
+                target_dist = normalized_lookup_matrix[idx]
+                m = 0.5 * (target_dist + normalized_lookup_matrix)
+                diff_target_m = target_dist * (torch.log(target_dist) - torch.log(m))
+                diff_all_m = normalized_lookup_matrix * (torch.log(normalized_lookup_matrix) - torch.log(m))
+                js = 0.5 * (diff_target_m + diff_all_m)
+                return js.sum(dim=1)
+
+            divergence_fn = compute_row_kl if similarity_metric == "kl_divergence" else compute_row_js
+
             num_tokens = self.lookup_matrix.size(0)
             self.similarity_matrix = torch.zeros((num_tokens, num_tokens))
 
             for i in range(num_tokens):
-                for j in range(num_tokens):
-                    if i != j:
-                        kl_div = F.kl_div(self.lookup_matrix[i], self.lookup_matrix[j], reduction='sum')
-                        self.similarity_matrix[i, j] = kl_div
-            
-        elif similarity_metric == "js_divergence":
-            # Compute the Jensen-Shannon divergence between all subwords, given the lookup matrix
-            num_tokens = self.lookup_matrix.size(0)
-            self.similarity_matrix = torch.zeros((num_tokens, num_tokens))
-            for i in range(num_tokens):
-                for j in range(num_tokens):
-                    if i != j:
-                        js_div = (F.kl_div(self.lookup_matrix[i], self.lookup_matrix[j], reduction='sum') + 
-                                  F.kl_div(self.lookup_matrix[j], self.lookup_matrix[i], reduction='sum')) / 2
-                        self.imilarity_matrix[i, j] = js_div
-
+                self.similarity_matrix[i] = divergence_fn(i)
+        else: 
+            raise ValueError(f"Invalid similarity metric: {similarity_metric}")
 
     @staticmethod
     def combine_defaultdicts(dicts_list: List[Dict[str, List[Tuple[int, float]]]]):
@@ -143,6 +148,9 @@ class POSLookup(object):
 
         similarity_values = self.similarity_matrix[tokens]
 
+        if self.similarity_metric == "kl_divergence" or self.similarity_metric == "js_divergence":
+            similarity_values =  1 - (similarity_values / similarity_values.max(dim=1, keepdim=True)[0])
+
         return similarity_values
     
     def build_lookup(self) -> torch.Tensor:
@@ -163,7 +171,6 @@ class POSLookup(object):
             for pos_tag in v:
                 lookup_counts[k][pos_tag] += 1
 
-        from tqdm import tqdm
 
         for k, v in tqdm(lookup_counts.items()):
             # For each word get the count 
