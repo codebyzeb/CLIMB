@@ -202,6 +202,20 @@ class POSLookup(object):
         
         return pos_dict
 
+    @property
+    def label_smoothing_temp(self) -> float:
+        # NOTE: These values were chosen based on the similarity metric; we could add them 
+        # to a config and tune these, but in practice empirically they seem to work well 
+        # (see notebooks for more details)
+        if self.similarity_metric == "cosine":
+            return 0.025
+        elif self.similarity_metric == "kl_divergence":
+            return 0.05
+        elif self.similarity_metric == "js_divergence":
+            return 0.05
+        else:
+            raise ValueError(f"Invalid similarity metric: {self.similarity_metric}")
+
 class DatasetPreprocessor(object):
     def __init__(self, cfg: BabyLMConfig, tokenizer: PreTrainedTokenizerFast):
         """

@@ -34,9 +34,6 @@ class POSMERGETask(MLMTask):
             **self.gate_pacing_fn_kwargs
         )
 
-        self.label_smoothing_temp = self.task_unit_params["optional_kwargs"]["label_smoothing_temp"]
-
-
     def compute_loss(
         self,
         model: Module,
@@ -69,6 +66,10 @@ class POSMERGETask(MLMTask):
         pos_lookup = loss_kwargs.pop("pos_lookup")
         global_step = loss_kwargs.pop("global_step")
 
+        # NOTE: The POS Lookup object contains suggested label_smoothing_temps, depending on the 
+        # given similarity metric.
+        label_smoothing_temp = pos_lookup.label_smoothing_temp
+
         # Get the current gate value that specifies how much of the loss to distribute
         # to the POS merge labels and how much to the correct label
         label_gate = self.gate_pacing_fn(global_step)
@@ -92,7 +93,7 @@ class POSMERGETask(MLMTask):
         similarity_vals = pos_lookup.find_similar(masked_tokens).to(self.device)
         similarity_vals[torch.arange(similarity_vals.shape[0]), masked_tokens] = 0.0
 
-        similarity_vals = torch.exp(similarity_vals / self.label_smoothing_temp)
+        similarity_vals = torch.exp(similarity_vals / label_smoothing_temp)
         similarity_vals = similarity_vals / torch.sum(similarity_vals, dim=1, keepdim=True)
 
         # if label gate is 0.9, then we distribute 90% to the MLM task and 10% to the POS merge task
@@ -117,7 +118,5 @@ class POSMERGETask(MLMTask):
         assert("gate_pacing_fn_kwargs" in self.task_unit_params["optional_kwargs"]
         ), "Must provide keyword arguments for the gating pacing function to use POS merge" 
 
-        assert("label_smoothing_temp" in self.task_unit_params["optional_kwargs"]
-        ), "Must provide label smoothing temperature to use POS merge"
         super().check_valid_config()
 

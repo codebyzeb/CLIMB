@@ -17,5 +17,4 @@ pos_merge:
       "start_temp": 0.5,
       "end_temp": 0.95, 
     },
-    "label_smoothing_temp": 0.025,
   }
