@@ -151,6 +151,10 @@ class POSLookup(object):
         if self.similarity_metric == "kl_divergence" or self.similarity_metric == "js_divergence":
             similarity_values =  1 - (similarity_values / similarity_values.max(dim=1, keepdim=True)[0])
 
+            # NOTE: Can also normalize by the largest divergence across all subwords
+            # largest_divergence = torch.max(self.similarity_matrix)
+            # similarity_values = 1 - (similarity_values / largest_divergence) 
+
         return similarity_values
     
     def build_lookup(self) -> torch.Tensor:
