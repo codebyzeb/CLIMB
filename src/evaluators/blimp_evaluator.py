@@ -14,6 +14,8 @@ import torch.distributed as dist
 
 logger = logging.getLogger(__name__)
 
+# NOTE: ADDED FOR POS MERGE TO SKIP AOA FOR THIS PROJECT
+SKIP_AOA = True
 
 class BlimpEvaluator(object):
     def __init__(
@@ -51,6 +53,8 @@ class BlimpEvaluator(object):
 
         # Start a subprocess to run the lib/evaluation-pipeline/babylm_eval.py script
         logger.info("Running BLIMP and AOA evaluation script...")
+        if SKIP_AOA:
+            logger.info("Skipping AOA evaluation...")
         cmd = (
             "cd lib/evaluation-pipeline; python babylm_eval.py ../../"
             + self.out_dir
@@ -59,8 +63,10 @@ class BlimpEvaluator(object):
             + f" --process_index {self.process_index}"
             + f" --world_size {self.world_size}"
             + (" --dry_run True" if self.dry_run else "")
-            + " --run_aoa"
         )
+        if not SKIP_AOA:
+            cmd += " --run_aoa"
+
         subprocess.run(cmd, shell=True)
 
         if self.world_size > 1:
@@ -82,17 +88,19 @@ class BlimpEvaluator(object):
 
         accuracies["blimp_avg"] = sum(accuracies.values()) / len(accuracies)
 
-        with open(
-            os.path.join(
-                self.out_dir,
-                "aoa_prediction",
-                "mean_absolute_deviation_results.json",
-            )
-        ) as f:
-            mean_absolute_deviations = json.load(f)
-            for key in mean_absolute_deviations.keys():
-                if "mad" in key:
-                    accuracies["aoa_" + key] = mean_absolute_deviations[key]
+        # NOTE: Uncomment to use AOA
+        if not SKIP_AOA:
+            with open(
+                os.path.join(
+                    self.out_dir,
+                    "aoa_prediction",
+                    "mean_absolute_deviation_results.json",
+                )
+            ) as f:
+                mean_absolute_deviations = json.load(f)
+                for key in mean_absolute_deviations.keys():
+                    if "mad" in key:
+                        accuracies["aoa_" + key] = mean_absolute_deviations[key]
 
         if self.world_size > 1:
             # Make sure all processes have finished before removing zeroshot directory
@@ -101,6 +109,7 @@ class BlimpEvaluator(object):
         # Delete the zeroshot directory; ensure that only one process does this
         if self.process_index == 0 and not self.keep_predictions:
             shutil.rmtree(os.path.join(self.out_dir, "zeroshot"))
-            shutil.rmtree(os.path.join(self.out_dir, "aoa_prediction"))
+            if not SKIP_AOA:
+                shutil.rmtree(os.path.join(self.out_dir, "aoa_prediction"))
 
         return accuracies
