@@ -15,12 +15,11 @@
 #SBATCH -A BUTTERY-SL3-GPU
 #! How many whole nodes should be allocated?
 #SBATCH --nodes=1
+#! Only requesting a single GPU node
+#SBATCH --gres=gpu:1
 #! How many (MPI) tasks will there be in total?
 #! Note probably this should not exceed the total number of GPUs in use.
 #SBATCH --ntasks=1
-#! Specify the number of GPUs per node (between 1 and 4; must be 4 if nodes>1).
-#! Note that the job submission script will enforce no more than 32 cpus per GPU.
-#SBATCH --exclusive
 
 #! How much wallclock time will be required?
 #SBATCH --time=12:00:00
@@ -93,7 +92,7 @@ source activate.sh
 
 srun torchrun \
 --nnodes 1 \
---nproc_per_node 4 \
+--nproc_per_node 1 \
 --rdzv_id $RANDOM \
 --rdzv_backend c10d \
 --rdzv_endpoint $head_node_ip:$port_number \
