@@ -12,9 +12,9 @@ pos_merge:
     "unmask_probability" : 0,
     "gate_pacing_fn_kwargs": {
       "pacing_fn_name": "log", 
-      "start_percent": 0.1, 
+      "start_percent": 0, 
       "end_percent": 1,
       "start_temp": 0.5,
-      "end_temp": 0.95, 
+      "end_temp": 1.0, 
     },
   }
