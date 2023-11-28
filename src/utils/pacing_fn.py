@@ -9,10 +9,10 @@ from typing import Callable
 def get_pacing_fn(
     pacing_fn_name: str,
     total_steps: int,
-    start_percent: float,
-    end_percent: float,
-    start_temp: float = 10, 
-    end_temp: float = 0.1,
+    start_percent: float = 0,
+    end_percent: float = 1,
+    start_temp: float = 0.5, 
+    end_temp: float = 1.0,
 ) -> Callable[[int], float]:
     """
     Modified from: https://github.com/google-research/understanding-curricula/blob/main/utils/utils.py
@@ -26,9 +26,9 @@ def get_pacing_fn(
         * end_percent (float): The percentage of steps from the total number of steps that
             have been taken after which we stop applying the pacing function.
 
-        * start_temp (float): The initial temperature value used for labeling smoothing; should 
-            be smaller than the start_temp and smaller than 1 
-        * end_temp (float):  The final temperature value used for labeling smoothing; should be 
+        * start_temp (float): The initial temperature value used for gating should 
+            be smaller than end_temp and smaller than 1 
+        * end_temp (float):  The final temperature value used for gating; should be 
             larger than the start_temp and smaller than 1 
     Returns:
         * (callable): A function that takes in the current step and returns the number of
@@ -59,7 +59,7 @@ def get_pacing_fn(
             step_diff = step - step_start
 
             return float(
-                max(rate * step_diff + start_temp, end_temp)
+                min(rate * step_diff + start_temp, end_temp)
             )
 
         return _linear_function
@@ -74,7 +74,7 @@ def get_pacing_fn(
             step_diff = step - step_start
 
             return float(
-                max(
+                min(
                     rate * step_diff ** 2 + start_temp, end_temp
                 )
             )
@@ -91,7 +91,7 @@ def get_pacing_fn(
             step_diff = step - step_start
 
             return float(
-                max(
+                min(
                     rate * step_diff ** 0.5 + start_temp,
                     end_temp,
                 )
@@ -125,7 +125,7 @@ def get_pacing_fn(
             step_diff = step - step_start
 
             return float(
-                max(
+                min(
                     rate * (np.exp(step_diff * constant) - 1) + tilde_b,
                     end_temp,
                 )
@@ -148,7 +148,7 @@ def get_pacing_fn(
 
             step_diff = step - step_start
 
-            return max(
+            return min(
                 N_b * (1 + (1.0 / c) * np.log(step_diff / tilde_a + ec))
                 + tilde_b,
                 end_temp,
@@ -158,4 +158,4 @@ def get_pacing_fn(
 
     else:
         # If no pacing function is specified, set the hardest difficulty from the beginning.
-        return lambda step: 1.0
+        return lambda step: 1.0 
