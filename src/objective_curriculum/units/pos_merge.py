@@ -102,13 +102,21 @@ class POSMERGETask(MLMTask):
 
         posmerge_labels.transpose(1, 2)[target_indices] = similarity_vals
 
-        return super().compute_loss(
+        loss_kwargs['reduction'] = 'none'
+
+        loss_unreduced = super().compute_loss(
             model,
             inputs,
             override_input_ids=inputs["input_ids_mlm"],
             override_lables=posmerge_labels,
             loss_kwargs=loss_kwargs,
         )
+
+        loss_mask = (mlm_labels != -100)
+
+        loss = loss_unreduced[loss_mask].mean()
+
+        return loss
 
     def check_valid_config(self) -> None:
         """
