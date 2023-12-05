@@ -16,7 +16,6 @@ from torch.optim.lr_scheduler import _LRScheduler
 from transformers import PreTrainedTokenizerFast
 from transformers.modeling_utils import unwrap_model
 
-
 class BaseTaskUnit(metaclass=ABCMeta):
     def __init__(
         self,
@@ -27,6 +26,7 @@ class BaseTaskUnit(metaclass=ABCMeta):
         hidden_rep_size: int,
         device: device,
         local_rank: int,
+        base_model: Module,
     ) -> None:
         """
         Initializes the task unit. Requires the tokenizer and the task unit parameters.
@@ -41,6 +41,8 @@ class BaseTaskUnit(metaclass=ABCMeta):
             * hidden_rep_size (int): The size of the hidden representation of the model [this
                 is the size of the last hidden layer of the base model, which is the input to the
                 task head]
+            * base_model (torch.nn.Module): The model that is trained (used for possibly
+                intializing the task head with the output matrix to be tied to the input embeddings)
         """
 
         self.tokenizer = tokenizer
@@ -55,6 +57,8 @@ class BaseTaskUnit(metaclass=ABCMeta):
 
         self.device = device
         self.local_rank = local_rank
+
+        self.base_model = base_model
 
         self.check_valid_config()
 

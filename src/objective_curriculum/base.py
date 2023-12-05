@@ -25,6 +25,7 @@ class ObjectiveCurriculum:
         tokenizer: PreTrainedTokenizerFast,
         device: torch.device,
         local_rank: int,
+        base_model: torch.nn.Module,
     ) -> None:
         """
         Initializes the objective curriculum. Requires the objective curriculum configuration
@@ -42,6 +43,8 @@ class ObjectiveCurriculum:
             * device (torch.device): The device on which the model is trained.
             * local_rank (int): The rank of the current process in distributed training
                 (if applicable)
+            * base_model (torch.nn.Module): The model that is trained (used for possibly
+                intializing the task head with the output matrix to be tied to the input embeddings)
         """
 
         if not self._is_valid_curriculum(curriculum_cfg):
@@ -79,6 +82,7 @@ class ObjectiveCurriculum:
                 hidden_rep_size=hidden_rep_size,
                 device=device,
                 local_rank=local_rank,
+                base_model=base_model,
             )
 
     def optimizer_step(self, global_step: int) -> None:

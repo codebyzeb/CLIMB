@@ -1,5 +1,7 @@
 pos_merge: 
-  task_head_params: {}
+  task_head_params: {
+    "tie_weights": true,
+  }
 
   optimizer_params: { 
     "lr": 1e-3,

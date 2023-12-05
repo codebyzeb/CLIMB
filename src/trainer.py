@@ -119,6 +119,13 @@ class CustomTrainer(Trainer):
 
         hidden_rep_size = hydra_config.model.model_kwargs["hidden_size"]
 
+        model = kwargs.get("model", None)
+
+        if model is None:
+            raise ValueError(
+                "The model needs to be passed in as a keyword argument to the Trainer"
+            )
+
         self.objective_curriculum = ObjectiveCurriculum(
             curriculum_cfg=self.objective_curriculum_cfg,
             max_steps=args.max_steps,
@@ -126,6 +133,7 @@ class CustomTrainer(Trainer):
             tokenizer=tokenizer,
             device=self.args.device,
             local_rank=self.args.local_rank,
+            base_model=model,
         )
 
         objective_cl_logger.info(

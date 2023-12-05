@@ -112,7 +112,6 @@ class MLMTask(BaseTaskUnit):
         """
         super().__init__(*args, **kwargs)
 
-        # Setting mlm task head
         mlm_head_config = RobertaConfig(
             vocab_size=self.tokenizer.vocab_size,  # type: ignore
             hidden_size=self.hidden_rep_size,
@@ -122,6 +121,12 @@ class MLMTask(BaseTaskUnit):
         self._mlm_head = RobertaPreLayerNormLMHead(mlm_head_config).to(
             self.device
         )
+
+        should_tie_weights = self.task_unit_params["task_head_params"].get(
+            "tie_weights", False
+        )
+        if should_tie_weights:
+            self._mlm_head.decoder.weight = self.base_model.embeddings.word_embeddings.weight
 
         if self.local_rank != -1:
             self._mlm_head = DistributedDataParallel(
